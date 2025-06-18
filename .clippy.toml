@@ -1,0 +1,9 @@
+msrv = "1.75.0"
+warn-on-all-wildcard-imports = true
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true
+disallowed-methods = [
+    { path = "std::option::Option::unwrap", reason = "use .expect() or proper error handling" },
+    { path = "std::result::Result::unwrap", reason = "use .expect() or proper error handling" },
+]

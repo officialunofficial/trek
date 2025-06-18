@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trek WASM Test</title>
+</head>
+<body>
+    <h1>Trek WASM Test</h1>
+    <p>Check the console for output.</p>
+    
+    <script type="module">
+        import init, { TrekWasm } from './pkg/trek.js';
+        
+        async function run() {
+            // Initialize the WASM module
+            await init();
+            
+            // Create a Trek instance
+            const trek = new TrekWasm({
+                debug: false,
+                min_content_score: 20.0,
+                max_attempts: 3,
+                include_metadata: true,
+                remove_exact_selectors: true,
+                remove_partial_selectors: true,
+                remove_selectors: [],
+                preserve_selectors: []
+            });
+            
+            // Test HTML
+            const html = `
+                <html>
+                    <head>
+                        <title>Test Article</title>
+                        <meta name="description" content="This is a test article">
+                        <meta name="author" content="Test Author">
+                    </head>
+                    <body>
+                        <nav>Navigation menu</nav>
+                        <article>
+                            <h1>Main Article Title</h1>
+                            <p>This is the first paragraph of the main content.</p>
+                            <p>This is the second paragraph with more important information.</p>
+                            <div class="code-block">
+                                <pre><code>console.log("Hello, Trek!");</code></pre>
+                            </div>
+                        </article>
+                        <aside>Sidebar content</aside>
+                        <footer>Footer information</footer>
+                    </body>
+                </html>
+            `;
+            
+            try {
+                // Parse the HTML
+                const result = trek.parse(html);
+                console.log('Trek extraction result:', result);
+                
+                // Also test async version
+                const asyncResult = await trek.parse_async(html);
+                console.log('Trek async extraction result:', asyncResult);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+            
+            // Clean up
+            trek.free();
+        }
+        
+        run();
+    </script>
+</body>
+</html>

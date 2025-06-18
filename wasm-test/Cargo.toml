@@ -1,0 +1,14 @@
+[package]
+name = "trek-wasm-test"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+
+# Use lol_html for WASM-compatible HTML parsing
+lol_html = "1.2"

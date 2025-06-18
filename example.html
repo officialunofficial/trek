@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trek WASM Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 400px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .output {
+            border: 1px solid #ccc;
+            padding: 20px;
+            min-height: 400px;
+            background: #f8f9fa;
+            overflow: auto;
+        }
+        pre {
+            background: #e9ecef;
+            padding: 10px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Trek WASM Demo</h1>
+    <p>This demonstrates the Trek content extraction library compiled to WebAssembly.</p>
+    
+    <div class="container">
+        <div>
+            <h2>Input HTML</h2>
+            <textarea id="input" placeholder="Paste HTML here...">
+<html>
+<head>
+    <title>Sample Article</title>
+    <meta name="author" content="John Doe">
+    <meta name="description" content="A sample article for testing">
+</head>
+<body>
+    <nav>Navigation Menu</nav>
+    <aside class="sidebar">
+        <h3>Related Links</h3>
+        <a href="/link1">Link 1</a>
+        <a href="/link2">Link 2</a>
+    </aside>
+    <article>
+        <h1>Sample Article Title</h1>
+        <p>Published on January 1, 2024</p>
+        <p>This is the first paragraph of the article with some interesting content.</p>
+        <p>This is the second paragraph with even more content to demonstrate extraction.</p>
+        <pre><code class="language-javascript">
+// Example code block
+function hello() {
+    console.log("Hello, Trek!");
+}
+        </code></pre>
+    </article>
+    <footer>© 2024 Example Site</footer>
+</body>
+</html>
+            </textarea>
+            <button onclick="extractContent()">Extract Content</button>
+        </div>
+        
+        <div>
+            <h2>Extracted Content</h2>
+            <div id="output" class="output">
+                <p>Click "Extract Content" to see the results...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        // This is a placeholder - the actual WASM module would be loaded here
+        window.extractContent = async function() {
+            const input = document.getElementById('input').value;
+            const output = document.getElementById('output');
+            
+            try {
+                // Placeholder for WASM call
+                output.innerHTML = `
+                    <h3>Extracted Successfully!</h3>
+                    <p><strong>Note:</strong> This is a demo placeholder. The actual WASM module would process the HTML.</p>
+                    <h4>Metadata:</h4>
+                    <pre>{
+  "title": "Sample Article Title",
+  "author": "John Doe",
+  "description": "A sample article for testing",
+  "wordCount": 42
+}</pre>
+                    <h4>Content:</h4>
+                    <div style="border: 1px solid #dee2e6; padding: 15px; background: white;">
+                        <h1>Sample Article Title</h1>
+                        <p>Published on January 1, 2024</p>
+                        <p>This is the first paragraph of the article with some interesting content.</p>
+                        <p>This is the second paragraph with even more content to demonstrate extraction.</p>
+                        <pre><code class="language-javascript">
+// Example code block
+function hello() {
+    console.log("Hello, Trek!");
+}
+                        </code></pre>
+                    </div>
+                `;
+            } catch (error) {
+                output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
