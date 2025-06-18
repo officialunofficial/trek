@@ -7,7 +7,7 @@ This guide provides practical examples of using Trek in various scenarios.
 ### Rust
 
 ```rust
-use trek::{Trek, TrekOptions};
+use trek_rs::{Trek, TrekOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create Trek instance with default options
@@ -80,7 +80,7 @@ console.log('Reading time:', result.metadata.readingTimeMinutes, 'minutes');
 ### Custom Options
 
 ```rust
-use trek::{Trek, TrekOptions};
+use trek_rs::{Trek, TrekOptions};
 
 let options = TrekOptions {
     include_images: false,        // Skip image extraction
@@ -112,7 +112,7 @@ const trek = new Trek(options);
 ### Extracting News Articles
 
 ```rust
-use trek::Trek;
+use trek_rs::Trek;
 
 async fn extract_news_article(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Fetch HTML content
@@ -177,7 +177,7 @@ async function processBlogPost(url) {
 ### Batch Processing
 
 ```rust
-use trek::Trek;
+use trek_rs::Trek;
 use rayon::prelude::*;
 
 fn batch_extract(urls: Vec<&str>) -> Vec<Result<TrekResponse, String>> {
@@ -246,7 +246,7 @@ class ContentAnalyzer {
 ### Rust Error Handling
 
 ```rust
-use trek::{Trek, TrekError};
+use trek_rs::{Trek, TrekError};
 
 fn safe_extract(url: &str, html: &str) -> Option<String> {
     let trek = Trek::default();

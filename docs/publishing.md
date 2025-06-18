@@ -1,16 +1,23 @@
-# Publishing Trek to NPM
+# Publishing Trek
 
-This guide explains how to publish Trek to the npm registry.
+This guide explains how to publish Trek to both crates.io (Rust) and npm (WebAssembly).
 
 ## Prerequisites
 
 - NPM account with access to publish under `@officialunofficial` scope
-- `NPM_PACKAGE_KEY` secret configured in GitHub repository settings
+- Crates.io account with publish access
+- GitHub repository secrets configured:
+  - `NPM_PACKAGE_KEY` - npm authentication token
+  - `CRATES_PACKAGE_KEY` - crates.io API token
 - Rust and wasm-pack installed locally
 
 ## Automated Publishing (Recommended)
 
-Trek uses GitHub Actions to automatically publish to npm when a new release is created.
+Trek uses GitHub Actions to automatically publish to both crates.io and npm when a new release is created. The release workflow will:
+
+1. First publish to crates.io (Rust package)
+2. Then publish to npm (WebAssembly package)
+3. Finally create release artifacts
 
 ### Steps:
 
@@ -33,16 +40,35 @@ Trek uses GitHub Actions to automatically publish to npm when a new release is c
    - Add release notes
    - Click "Publish release"
 
-4. **Monitor the workflow:**
-   - The npm publish workflow will trigger automatically
+4. **Monitor the workflows:**
+   - The release workflow will trigger automatically
    - Check [Actions tab](https://github.com/officialunofficial/trek/actions) for progress
-   - Package will be available at https://www.npmjs.com/package/@officialunofficial/trek
+   - Packages will be available at:
+     - Rust: https://crates.io/crates/trek-rs
+     - npm: https://www.npmjs.com/package/@officialunofficial/trek
 
 ## Manual Publishing
 
 If you need to publish manually:
 
-### Local Setup:
+### Publishing to crates.io:
+
+1. **Login to crates.io:**
+   ```bash
+   cargo login
+   ```
+
+2. **Dry run (recommended):**
+   ```bash
+   make crates-publish-dry
+   ```
+
+3. **Publish:**
+   ```bash
+   make crates-publish
+   ```
+
+### Publishing to npm:
 
 1. **Login to npm:**
    ```bash
@@ -66,8 +92,17 @@ If you need to publish manually:
 
 ### Using GitHub Actions Manually:
 
-You can also trigger the publish workflow manually:
+You can trigger individual publish workflows manually:
 
+#### For crates.io:
+1. Go to [Actions → Publish to crates.io](https://github.com/officialunofficial/trek/actions/workflows/crates-publish.yml)
+2. Click "Run workflow"
+3. Select options:
+   - Branch: `main`
+   - Dry run: `true` for testing, `false` for actual publish
+4. Click "Run workflow"
+
+#### For npm:
 1. Go to [Actions → Publish to NPM](https://github.com/officialunofficial/trek/actions/workflows/npm-publish.yml)
 2. Click "Run workflow"
 3. Select options:
@@ -143,6 +178,13 @@ If the WASM build fails:
 
 ## Package Information
 
+### Rust Package (crates.io)
+- **Package name:** `trek-rs`
+- **Registry:** https://crates.io
+- **Categories:** web-programming, text-processing, wasm
+- **Keywords:** html, parsing, extraction, readability, wasm
+
+### npm Package
 - **Package name:** `@officialunofficial/trek`
 - **Registry:** https://registry.npmjs.org
 - **Scope:** `@officialunofficial`
@@ -150,21 +192,32 @@ If the WASM build fails:
 
 ## Checking Published Versions
 
-View all published versions:
+### Rust (crates.io):
 
 ```bash
-npm view @officialunofficial/trek versions
+# View crate info
+cargo search trek-rs --limit 1
+
+# View on web
+open https://crates.io/crates/trek-rs
 ```
 
-View latest version details:
+### npm:
 
 ```bash
+# View all published versions
+npm view @officialunofficial/trek versions
+
+# View latest version details
 npm view @officialunofficial/trek
 ```
 
 ## Security Notes
 
-- Never commit npm tokens to the repository
-- Use GitHub Secrets for CI/CD authentication
-- Regularly rotate npm access tokens
-- Enable 2FA on your npm account
+- Never commit API tokens to the repository
+- Use GitHub Secrets for CI/CD authentication:
+  - `CRATES_PACKAGE_KEY` for crates.io
+  - `NPM_PACKAGE_KEY` for npm
+- Regularly rotate access tokens
+- Enable 2FA on both crates.io and npm accounts
+- Review dependencies before publishing

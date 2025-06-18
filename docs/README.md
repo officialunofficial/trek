@@ -14,7 +14,7 @@ Trek is a high-performance web content extraction library written in Rust that c
 ## Quick Start
 
 ```rust
-use trek::{Trek, TrekOptions};
+use trek_rs::{Trek, TrekOptions};
 
 // Create extractor with default options
 let trek = Trek::new(TrekOptions::default());
@@ -45,7 +45,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-trek = "0.1.0"
+trek-rs = "0.1.0"
 ```
 
 ### WebAssembly

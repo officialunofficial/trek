@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-crates:
+    name: Publish to crates.io
+    uses: ./.github/workflows/crates-publish.yml
+    secrets: inherit
+
+  publish-npm:
+    name: Publish to npm
+    needs: publish-crates
+    uses: ./.github/workflows/npm-publish.yml
+    secrets: inherit
+
+  create-release-artifacts:
+    name: Create Release Artifacts
+    needs: [publish-crates, publish-npm]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build release artifacts
+        run: |
+          # Build Rust release
+          cargo build --release
+          
+          # Build WASM release
+          make wasm-build
+          
+          # Create archives
+          mkdir -p artifacts
+          
+          # Package WASM build
+          cd pkg && tar -czf ../artifacts/trek-wasm-${{ github.event.release.tag_name }}.tar.gz * && cd ..
+          
+          # Package Rust library
+          tar -czf artifacts/trek-rust-${{ github.event.release.tag_name }}.tar.gz \
+            Cargo.toml \
+            Cargo.lock \
+            src/ \
+            build.rs \
+            LICENSE \
+            README.md
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

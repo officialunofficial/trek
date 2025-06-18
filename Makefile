@@ -182,6 +182,17 @@ npm-publish-dry: wasm-build ## Dry run npm publish
 	@echo "$(YELLOW)Running npm publish dry run...$(NC)"
 	@cd pkg && npm publish --dry-run --access public
 
+.PHONY: crates-publish
+crates-publish: test ## Publish to crates.io
+	@echo "$(YELLOW)Publishing to crates.io...$(NC)"
+	cargo publish
+	@echo "$(GREEN)Published to crates.io!$(NC)"
+
+.PHONY: crates-publish-dry
+crates-publish-dry: test ## Dry run crates.io publish
+	@echo "$(YELLOW)Running crates.io publish dry run...$(NC)"
+	cargo publish --dry-run
+
 .PHONY: stats
 stats: ## Show code statistics
 	@echo "$(YELLOW)Code statistics:$(NC)"
