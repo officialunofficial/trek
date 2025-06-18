@@ -6,6 +6,7 @@
     <title>Trek Playground</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700&display=swap');
 
         :root {
             --text-primary: #000000;
@@ -23,6 +24,7 @@
             --radius: 16px;
             --radius-small: 12px;
             --transition: 200ms ease-in-out;
+            --topograph-color: rgba(0, 0, 0, 0.12);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -35,6 +37,7 @@
                 --surface-hover: #2a2a2a;
                 --border: rgba(255, 255, 255, 0.08);
                 --border-hover: rgba(255, 255, 255, 0.16);
+                --topograph-color: rgba(255, 255, 255, 0.12);
             }
         }
 
@@ -434,9 +437,49 @@
                 gap: 12px;
             }
         }
+
+        /* Topograph styles */
+        #topograph-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+            opacity: 1;
+        }
+
+        .fps-container {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            padding: 0.4rem;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border-radius: 4px;
+            font-size: 11px;
+            opacity: 0.6;
+            transition: opacity var(--transition);
+            z-index: 1000;
+        }
+
+        .fps-container:hover {
+            opacity: 1;
+        }
+
+        .fps-container p {
+            all: unset;
+            font-weight: bold;
+            font-family: 'Nunito', sans-serif;
+        }
     </style>
 </head>
 <body>
+    <canvas id="topograph-canvas"></canvas>
+    <div class="fps-container" style="display: none;">
+        <p id="fps-count"></p>
+    </div>
     <div class="container">
         <section class="section">
             <div class="logo">
@@ -772,6 +815,299 @@
         }
 
         initializeTrek();
+    </script>
+
+    <script type="module">
+        import * as ChriscoursesPerlinNoise from "https://esm.sh/@chriscourses/perlin-noise";
+
+        // Editable values
+        let showFPS = false; // Off by default for production
+        let MAX_FPS = 30; // Limit FPS for performance
+        let thresholdIncrement = 5;
+        let thickLineThresholdMultiple = 3;
+        let res = 12; // Slightly larger cells for performance
+        let baseZOffset = 0.00005; // Slower movement for subtlety
+        let lineColor = getComputedStyle(document.documentElement).getPropertyValue('--topograph-color').trim();
+
+        let canvas;
+        let ctx;
+        let fpsCount = document.getElementById("fps-count");
+        let frameValues = [];
+        let inputValues = [];
+
+        let currentThreshold = 0;
+        let cols = 0;
+        let rows = 0;
+        let zOffset = 0;
+        let zBoostValues = [];
+        let noiseMin = 100;
+        let noiseMax = 0;
+
+        let mousePos = { x: -99, y: -99 };
+        let mouseDown = false;
+
+        // Update line color when theme changes
+        const updateLineColor = () => {
+            lineColor = getComputedStyle(document.documentElement).getPropertyValue('--topograph-color').trim();
+        };
+
+        // Listen for theme changes
+        const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        darkModeMediaQuery.addEventListener('change', updateLineColor);
+
+        setupCanvas();
+        animate();
+
+        function setupCanvas() {
+            let canvasElement = document.getElementById('topograph-canvas');
+            let canvasCtx = canvasElement.getContext('2d');
+
+            if (!canvasCtx) {
+                return;
+            } else {
+                canvas = canvasElement;
+                ctx = canvasCtx;
+            }
+            canvasSize();
+            window.addEventListener('resize', () => {
+                canvasSize();
+            });
+
+            canvas.style.pointerEvents = 'auto';
+            canvas.addEventListener('mousemove', (e) => {
+                mousePos = { x: e.clientX, y: e.clientY };
+            });
+
+            canvas.addEventListener('mousedown', () => {
+                mouseDown = true;
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                mouseDown = false;
+            });
+        }
+
+        function canvasSize() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            cols = Math.floor(canvas.width / res) + 1;
+            rows = Math.floor(canvas.height / res) + 1;
+
+            // Initialize zBoostValues
+            for (let y = 0; y < rows; y++) {
+                zBoostValues[y] = [];
+                for (let x = 0; x <= cols; x++) {
+                    zBoostValues[y][x] = 0;
+                }
+            }
+        }
+
+        function animate() {
+            const startTime = performance.now();
+            setTimeout(() => {
+                const endTime = performance.now();
+                const frameDuration = endTime - startTime;
+                frameValues.push(Math.round(1000 / frameDuration));
+                if (frameValues.length > 60 && showFPS) {
+                    fpsCount.innerText = Math.round(frameValues.reduce((a, b) => a + b) / frameValues.length);
+                    frameValues = [];
+                }
+                requestAnimationFrame(() => animate());
+            }, 1000 / MAX_FPS);
+
+            if (mouseDown) {
+                mouseOffset();
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            zOffset += baseZOffset;
+            generateNoise();
+
+            const roundedNoiseMin = Math.floor(noiseMin / thresholdIncrement) * thresholdIncrement;
+            const roundedNoiseMax = Math.ceil(noiseMax / thresholdIncrement) * thresholdIncrement;
+            for (let threshold = roundedNoiseMin; threshold < roundedNoiseMax; threshold += thresholdIncrement) {
+                currentThreshold = threshold;
+                renderAtThreshold();
+            }
+            noiseMin = 100;
+            noiseMax = 0;
+        }
+
+        function mouseOffset() {
+            let x = Math.floor(mousePos.x / res);
+            let y = Math.floor(mousePos.y / res);
+            if (inputValues[y] === undefined || inputValues[y][x] === undefined) return;
+            const incrementValue = 0.002;
+            const radius = 8;
+            for (let i = -radius; i <= radius; i++) {
+                for (let j = -radius; j <= radius; j++) {
+                    const distanceSquared = i * i + j * j;
+                    const radiusSquared = radius * radius;
+
+                    if (distanceSquared <= radiusSquared && zBoostValues[y + i]?.[x + j] !== undefined) {
+                        zBoostValues[y + i][x + j] += incrementValue * (1 - distanceSquared / radiusSquared);
+                    }
+                }
+            }
+        }
+
+        function generateNoise() {
+            for (let y = 0; y < rows; y++) {
+                inputValues[y] = [];
+                for (let x = 0; x <= cols; x++) {
+                    inputValues[y][x] = ChriscoursesPerlinNoise.noise(x * 0.02, y * 0.02, zOffset + zBoostValues[y]?.[x]) * 100;
+                    if (inputValues[y][x] < noiseMin) noiseMin = inputValues[y][x];
+                    if (inputValues[y][x] > noiseMax) noiseMax = inputValues[y][x];
+                    if (zBoostValues[y]?.[x] > 0) {
+                        zBoostValues[y][x] *= 0.99;
+                    }
+                }
+            }
+        }
+
+        function renderAtThreshold() {
+            ctx.beginPath();
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = currentThreshold % (thresholdIncrement * thickLineThresholdMultiple) === 0 ? 1.5 : 0.75;
+
+            for (let y = 0; y < inputValues.length - 1; y++) {
+                for (let x = 0; x < inputValues[y].length - 1; x++) {
+                    if (inputValues[y][x] > currentThreshold && inputValues[y][x + 1] > currentThreshold && inputValues[y + 1][x + 1] > currentThreshold && inputValues[y + 1][x] > currentThreshold) continue;
+                    if (inputValues[y][x] < currentThreshold && inputValues[y][x + 1] < currentThreshold && inputValues[y + 1][x + 1] < currentThreshold && inputValues[y + 1][x] < currentThreshold) continue;
+
+                    let gridValue = binaryToType(
+                        inputValues[y][x] > currentThreshold ? 1 : 0,
+                        inputValues[y][x + 1] > currentThreshold ? 1 : 0,
+                        inputValues[y + 1][x + 1] > currentThreshold ? 1 : 0,
+                        inputValues[y + 1][x] > currentThreshold ? 1 : 0
+                    );
+
+                    placeLines(gridValue, x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        function placeLines(gridValue, x, y) {
+            let nw = inputValues[y][x];
+            let ne = inputValues[y][x + 1];
+            let se = inputValues[y + 1][x + 1];
+            let sw = inputValues[y + 1][x];
+            let a, b, c, d;
+
+            switch (gridValue) {
+                case 1:
+                case 14:
+                    c = [
+                        x * res + res * linInterpolate(sw, se),
+                        y * res + res
+                    ];
+                    d = [x * res, y * res + res * linInterpolate(nw, sw)];
+                    line(d, c);
+                    break;
+                case 2:
+                case 13:
+                    b = [
+                        x * res + res,
+                        y * res + res * linInterpolate(ne, se)
+                    ];
+                    c = [
+                        x * res + res * linInterpolate(sw, se),
+                        y * res + res
+                    ];
+                    line(b, c);
+                    break;
+                case 3:
+                case 12:
+                    b = [
+                        x * res + res,
+                        y * res + res * linInterpolate(ne, se)
+                    ];
+                    d = [x * res, y * res + res * linInterpolate(nw, sw)];
+                    line(d, b);
+                    break;
+                case 11:
+                case 4:
+                    a = [x * res + res * linInterpolate(nw, ne), y * res];
+                    b = [
+                        x * res + res,
+                        y * res + res * linInterpolate(ne, se)
+                    ];
+                    line(a, b);
+                    break;
+                case 5:
+                    a = [x * res + res * linInterpolate(nw, ne), y * res];
+                    b = [
+                        x * res + res,
+                        y * res + res * linInterpolate(ne, se)
+                    ];
+                    c = [
+                        x * res + res * linInterpolate(sw, se),
+                        y * res + res
+                    ];
+                    d = [x * res, y * res + res * linInterpolate(nw, sw)];
+                    line(d, a);
+                    line(c, b);
+                    break;
+                case 6:
+                case 9:
+                    a = [x * res + res * linInterpolate(nw, ne), y * res];
+                    c = [
+                        x * res + res * linInterpolate(sw, se),
+                        y * res + res
+                    ];
+                    line(c, a);
+                    break;
+                case 7:
+                case 8:
+                    a = [x * res + res * linInterpolate(nw, ne), y * res];
+                    d = [x * res, y * res + res * linInterpolate(nw, sw)];
+                    line(d, a);
+                    break;
+                case 10:
+                    a = [x * res + res * linInterpolate(nw, ne), y * res];
+                    b = [
+                        x * res + res,
+                        y * res + res * linInterpolate(ne, se)
+                    ];
+                    c = [
+                        x * res + res * linInterpolate(sw, se),
+                        y * res + res
+                    ];
+                    d = [x * res, y * res + res * linInterpolate(nw, sw)];
+                    line(a, b);
+                    line(c, d);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function line(from, to) {
+            ctx.moveTo(from[0], from[1]);
+            ctx.lineTo(to[0], to[1]);
+        }
+
+        function linInterpolate(x0, x1, y0 = 0, y1 = 1) {
+            if (x0 === x1) {
+                return 0;
+            }
+
+            return y0 + ((y1 - y0) * (currentThreshold - x0)) / (x1 - x0);
+        }
+
+        function binaryToType(nw, ne, se, sw) {
+            let a = [nw, ne, se, sw];
+            return a.reduce((res, x) => (res << 1) | x);
+        }
     </script>
 </body>
 </html>
