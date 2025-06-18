@@ -27,8 +27,5 @@ perf.data
 perf.data.old
 flamegraph.svg
 
-# Documentation
-docs/
-
 # Environment variables
 .env
