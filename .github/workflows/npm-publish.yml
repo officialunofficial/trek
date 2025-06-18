@@ -1,0 +1,95 @@
+name: Publish to NPM
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Perform a dry run (no actual publish)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM package
+        run: make wasm-build
+
+      - name: Configure npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PACKAGE_KEY }}
+
+      - name: Check if version exists
+        id: check_version
+        run: |
+          PACKAGE_NAME=$(cat pkg/package.json | jq -r .name)
+          PACKAGE_VERSION=$(cat pkg/package.json | jq -r .version)
+          
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" > /dev/null 2>&1; then
+            echo "Version ${PACKAGE_VERSION} already exists on npm"
+            echo "version_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version ${PACKAGE_VERSION} does not exist on npm"
+            echo "version_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        if: steps.check_version.outputs.version_exists == 'false' && github.event.inputs.dry_run != 'true'
+        run: |
+          cd pkg
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PACKAGE_KEY }}
+
+      - name: Dry run (skip actual publish)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          cd pkg
+          npm publish --dry-run --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PACKAGE_KEY }}
+
+      - name: Create version tag
+        if: steps.check_version.outputs.version_exists == 'false' && github.event.inputs.dry_run != 'true' && github.event_name == 'release'
+        run: |
+          PACKAGE_VERSION=$(cat pkg/package.json | jq -r .version)
+          git tag -a "v${PACKAGE_VERSION}" -m "Release v${PACKAGE_VERSION}"
+          git push origin "v${PACKAGE_VERSION}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

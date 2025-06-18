@@ -9,6 +9,7 @@ Trek is a high-performance web content extraction library written in Rust that c
 - [Architecture Overview](./architecture.md)
 - [Usage Examples](./examples.md)
 - [Extractor Development Guide](./extractor-guide.md)
+- [Publishing Guide](./publishing.md)
 
 ## Quick Start
 

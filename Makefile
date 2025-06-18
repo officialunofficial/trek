@@ -169,6 +169,17 @@ install-dev-deps: ## Install development dependencies
 pre-commit: fmt check clippy test ## Run pre-commit checks
 	@echo "$(GREEN)All pre-commit checks passed!$(NC)"
 
+.PHONY: npm-publish
+npm-publish: wasm-build ## Publish to npm registry
+	@echo "$(YELLOW)Publishing to npm...$(NC)"
+	@cd pkg && npm publish --access public
+	@echo "$(GREEN)Published to npm!$(NC)"
+
+.PHONY: npm-publish-dry
+npm-publish-dry: wasm-build ## Dry run npm publish
+	@echo "$(YELLOW)Running npm publish dry run...$(NC)"
+	@cd pkg && npm publish --dry-run --access public
+
 .PHONY: stats
 stats: ## Show code statistics
 	@echo "$(YELLOW)Code statistics:$(NC)"
