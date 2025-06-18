@@ -92,11 +92,13 @@ wasm-check-deps: ## Check WASM dependencies
 wasm-build: wasm-check-deps ## Build WASM module
 	@echo "$(YELLOW)Building WASM module...$(NC)"
 	RUSTFLAGS='$(RUSTFLAGS_WASM)' $(WASM_PACK) build --target web --out-dir pkg --release --no-opt
+	@node scripts/fix-package-json.js
 
 .PHONY: wasm-build-debug
 wasm-build-debug: wasm-check-deps ## Build WASM module in debug mode
 	@echo "$(YELLOW)Building WASM module (debug)...$(NC)"
 	RUSTFLAGS='$(RUSTFLAGS_WASM)' $(WASM_PACK) build --target web --out-dir pkg --dev
+	@node scripts/fix-package-json.js
 
 .PHONY: wasm-test
 wasm-test: ## Run WASM tests

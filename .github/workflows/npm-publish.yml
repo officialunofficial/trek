@@ -61,7 +61,11 @@ jobs:
           PACKAGE_NAME=$(cat pkg/package.json | jq -r .name)
           PACKAGE_VERSION=$(cat pkg/package.json | jq -r .version)
           
-          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" > /dev/null 2>&1; then
+          # Check if package exists at all first
+          if ! npm view "${PACKAGE_NAME}" > /dev/null 2>&1; then
+            echo "Package ${PACKAGE_NAME} does not exist on npm yet"
+            echo "version_exists=false" >> $GITHUB_OUTPUT
+          elif npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" > /dev/null 2>&1; then
             echo "Version ${PACKAGE_VERSION} already exists on npm"
             echo "version_exists=true" >> $GITHUB_OUTPUT
           else
