@@ -106,6 +106,28 @@
             display: flex;
             gap: 16px;
             margin: 0 24px 16px 24px;
+            flex-wrap: wrap;
+        }
+        
+        .url-input {
+            flex: 1;
+            min-width: 300px;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-small);
+            font-size: 15px;
+            background: var(--surface);
+            color: var(--text-primary);
+            transition: border-color var(--transition);
+        }
+        
+        .url-input:focus {
+            outline: none;
+            border-color: var(--border-hover);
+        }
+        
+        .url-input::placeholder {
+            color: var(--text-tertiary);
         }
 
         .button {
@@ -327,6 +349,12 @@
             font-size: 14px;
             padding: 16px 0;
         }
+        
+        .info {
+            color: var(--accent);
+            font-size: 14px;
+            padding: 16px 0;
+        }
 
         .empty {
             text-align: center;
@@ -487,9 +515,12 @@
             </div>
 
             <div class="controls">
+                <input type="url" id="urlInput" class="url-input" placeholder="Enter URL to fetch content..." title="Note: Some sites may block fetching due to CORS. Try news sites or blogs.">
+                <button class="button" id="fetchBtn" onclick="fetchUrl()">Fetch</button>
                 <button class="button button-primary" id="extractBtn" onclick="extractContent()">Extract</button>
                 <button class="button" onclick="clearInput()">Clear</button>
-                <button class="button" onclick="loadExample()">Example</button>
+                <button class="button" onclick="loadExample()">Example HTML</button>
+                <button class="button" onclick="loadExampleUrl()">Example URL</button>
             </div>
 
             <div class="options">
@@ -529,7 +560,7 @@
     </div>
 
     <script type="module">
-        import init, { TrekWasm } from '../pkg/trek.js';
+        import init, { TrekWasm } from '../pkg/trek_rs.js';
 
         let trek = null;
         let currentTab = 'metadata';
@@ -568,9 +599,12 @@
                     trek.free();
                 }
 
+                // Get URL from input if available
+                const urlInput = document.getElementById('urlInput').value.trim();
+                
                 trek = new TrekWasm({
                     debug: debug,
-                    url: null,
+                    url: urlInput || null,
                     markdown: false,
                     separateMarkdown: false,
                     removeExactSelectors: removeClutter,
@@ -719,12 +753,99 @@
 
         window.clearInput = function() {
             document.getElementById('htmlInput').value = '';
+            document.getElementById('urlInput').value = '';
             document.getElementById('output').innerHTML = '<div class="empty">Your extracted content will appear here</div>';
             document.getElementById('errorContainer').innerHTML = '';
             document.getElementById('statsContainer').innerHTML = '';
             lastResult = null;
         };
+        
+        window.fetchUrl = async function() {
+            const urlInput = document.getElementById('urlInput');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                showError('Please enter a URL');
+                return;
+            }
+            
+            // Validate URL
+            try {
+                new URL(url);
+            } catch (e) {
+                showError('Please enter a valid URL');
+                return;
+            }
+            
+            const fetchBtn = document.getElementById('fetchBtn');
+            const htmlInput = document.getElementById('htmlInput');
+            const loading = document.getElementById('loading');
+            const errorContainer = document.getElementById('errorContainer');
+            
+            fetchBtn.disabled = true;
+            loading.classList.add('active');
+            errorContainer.innerHTML = '';
+            htmlInput.value = 'Fetching content...';
+            
+            try {
+                // Use a public CORS proxy service
+                // Alternative proxies if needed:
+                // - https://corsproxy.io/?
+                // - https://cors-anywhere.herokuapp.com/
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const response = await fetch(proxyUrl + encodeURIComponent(url));
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                }
+                
+                const html = await response.text();
+                
+                if (!html || html.trim().length === 0) {
+                    throw new Error('No content received from URL');
+                }
+                
+                // Update the HTML input with fetched content
+                htmlInput.value = html;
+                
+                // Automatically extract content
+                await extractContent();
+                
+            } catch (error) {
+                console.error('Fetch error:', error);
+                let errorMessage = `Failed to fetch URL: ${error.message}`;
+                
+                if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+                    errorMessage += `\n\nNote: Due to browser security (CORS), some websites cannot be fetched directly. `;
+                    errorMessage += `Try:\n• News sites and blogs often work\n• Copy and paste the HTML source manually\n• Use browser extensions that allow CORS`;
+                }
+                
+                showError(errorMessage);
+                htmlInput.value = '';
+            } finally {
+                fetchBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        };
 
+        window.loadExampleUrl = function() {
+            // Example URLs that typically work with CORS proxies
+            const exampleUrls = [
+                'https://www.nytimes.com/interactive/2025/06/17/magazine/ai-human-analysis-face-diseases.html',
+                'https://www.instyle.com/sardine-girl-summer-fashion-trend-11752920',
+                'https://justine.lol/history/',
+                'https://mirror80.com/2016/06/wall-street-movie-80s/',
+                'https://www.theverge.com/news/689093/waymo-nyc-permit-autonomous-testing-new-york-state'
+            ];
+            
+            const randomUrl = exampleUrls[Math.floor(Math.random() * exampleUrls.length)];
+            document.getElementById('urlInput').value = randomUrl;
+            document.getElementById('htmlInput').value = '';
+            
+            // Show a tip
+            showError('Click "Fetch" to load content from this URL. Note: Not all sites work due to CORS restrictions.', true);
+        };
+        
         window.loadExample = function() {
             document.getElementById('htmlInput').value = `<!DOCTYPE html>
 <html lang="en">
@@ -803,9 +924,12 @@
 </html>`;
         };
 
-        function showError(message) {
+        function showError(message, isInfo = false) {
             const errorContainer = document.getElementById('errorContainer');
-            errorContainer.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
+            // Convert newlines to <br> for multi-line error messages
+            const formattedMessage = escapeHtml(message).replace(/\n/g, '<br>');
+            const className = isInfo ? 'info' : 'error';
+            errorContainer.innerHTML = `<div class="${className}">${formattedMessage}</div>`;
         }
 
         function escapeHtml(text) {
@@ -815,6 +939,28 @@
         }
 
         initializeTrek();
+        
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Cmd/Ctrl + Enter to extract
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                extractContent();
+            }
+            // Cmd/Ctrl + K to clear
+            else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                clearInput();
+            }
+        });
+        
+        // Enter key in URL input triggers fetch
+        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                fetchUrl();
+            }
+        });
     </script>
 
     <script type="module">
