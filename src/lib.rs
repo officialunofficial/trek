@@ -152,29 +152,37 @@ impl Trek {
         // Find and extract main content
         let main_content = self.extract_main_content(html);
 
+        // Extract just the body content first
+        let body_content = self.extract_body_content(&main_content);
+
         // Remove clutter if enabled
         let cleaned_content = if self.options.removal.remove_exact_selectors
             || self.options.removal.remove_partial_selectors
         {
-            let result = self.remove_clutter(&main_content)?;
+            let result = self.remove_clutter(&body_content)?;
             if self.options.debug {
                 debug!("After clutter removal, content length: {}", result.len());
             }
             result
         } else {
-            main_content
+            body_content
         };
-
-        // Extract just the body content
-        let body_content = self.extract_body_content(&cleaned_content);
 
         // Standardize content
         let final_content =
-            standardize::standardize_content(&body_content, &metadata.title, self.options.debug);
+            standardize::standardize_content(&cleaned_content, &metadata.title, self.options.debug);
 
         let mut final_metadata = metadata.clone();
         final_metadata.word_count = utils::count_words(&final_content);
         final_metadata.parse_time = utils::current_time_ms() - start_time;
+
+        // If no metadata image found, try to extract first suitable image from content
+        if final_metadata.image.is_empty() {
+            if let Some(first_image) = self.extract_first_image_from_content(&final_content) {
+                debug!("Found first image in content: {}", first_image);
+                final_metadata.image = first_image;
+            }
+        }
 
         Ok(TrekResponse {
             content: final_content,
@@ -326,47 +334,141 @@ impl Trek {
         html.trim_start_matches('\n').to_string()
     }
 
+    fn extract_first_image_from_content(&self, html: &str) -> Option<String> {
+        use lol_html::{RewriteStrSettings, element, rewrite_str};
+
+        let first_image = Arc::new(Mutex::new(None::<String>));
+        let image_clone = Arc::clone(&first_image);
+
+        let settings = RewriteStrSettings {
+            element_content_handlers: vec![element!("img", move |el| {
+                let mut image_guard = image_clone.lock().expect("Failed to acquire lock");
+
+                // Skip if we already found an image
+                if image_guard.is_some() {
+                    return Ok(());
+                }
+
+                // Get the src attribute
+                if let Some(src) = el.get_attribute("src") {
+                    // Skip data URLs, tracking pixels, and small images
+                    if !src.starts_with("data:") && !src.is_empty() {
+                        // Check dimensions if available
+                        let width = el
+                            .get_attribute("width")
+                            .and_then(|w| w.parse::<u32>().ok())
+                            .unwrap_or(100);
+                        let height = el
+                            .get_attribute("height")
+                            .and_then(|h| h.parse::<u32>().ok())
+                            .unwrap_or(100);
+
+                        // Skip small images (likely icons or tracking pixels)
+                        if width >= 50 && height >= 50 {
+                            *image_guard = Some(src);
+                        }
+                    }
+                }
+
+                Ok(())
+            })],
+            ..RewriteStrSettings::default()
+        };
+
+        // Process the HTML
+        let _ = rewrite_str(html, settings).ok()?;
+
+        // Extract the result
+        let result = Arc::try_unwrap(first_image)
+            .map(|mutex| mutex.into_inner().expect("Failed to get inner value"))
+            .unwrap_or_else(|arc| {
+                let guard = arc.lock().expect("Failed to acquire lock");
+                guard.clone()
+            });
+
+        result
+    }
+
     #[allow(clippy::unused_self, clippy::disallowed_methods)] // lol_html macros use unwrap internally
     fn remove_clutter(&self, html: &str) -> Result<String> {
         use crate::constants::{PARTIAL_SELECTORS, TEST_ATTRIBUTES};
+        use lol_html::html_content::ContentType;
 
-        // Combined approach: remove elements in a single pass
+        // Capture options in local variables for the closure
+        let remove_exact = self.options.removal.remove_exact_selectors;
+        let remove_partial = self.options.removal.remove_partial_selectors;
+
+        // Use comments to mark content for removal
         let settings = RewriteStrSettings {
             element_content_handlers: vec![
-                // Remove common non-content elements
+                // Remove common non-content elements by tag name
                 element!(
                     "script, style, nav, footer, header, aside, noscript",
-                    |el| {
-                        if self.options.removal.remove_exact_selectors {
+                    move |el| {
+                        if remove_exact {
+                            el.before("<!--REMOVE-->", ContentType::Html);
+                            el.after("<!--/REMOVE-->", ContentType::Html);
                             el.remove();
                         }
                         Ok(())
                     }
                 ),
-                // Remove elements matching partial selectors
-                element!("*", |el| {
-                    if self.options.removal.remove_partial_selectors {
-                        // Check each test attribute for partial matches
-                        for attr in TEST_ATTRIBUTES {
-                            if let Some(value) = el.get_attribute(attr) {
-                                let value_lower = value.to_lowercase();
-                                for pattern in PARTIAL_SELECTORS {
-                                    if value_lower.contains(pattern) {
-                                        el.remove();
-                                        return Ok(());
+                // Remove elements matching class/id selectors
+                element!(
+                    "div, section, article, main, span, p, ul, ol, li, h1, h2, h3, h4, h5, h6",
+                    move |el| {
+                        let mut should_remove = false;
+
+                        if remove_exact {
+                            // Check for .navigation, .sidebar, etc.
+                            if let Some(class_attr) = el.get_attribute("class") {
+                                for class in class_attr.split_whitespace() {
+                                    if class == "navigation" || class == "sidebar" {
+                                        should_remove = true;
+                                        break;
                                     }
                                 }
                             }
                         }
+
+                        if !should_remove && remove_partial {
+                            // Check each test attribute for partial matches
+                            for attr in TEST_ATTRIBUTES {
+                                if let Some(value) = el.get_attribute(attr) {
+                                    let value_lower = value.to_lowercase();
+                                    for pattern in PARTIAL_SELECTORS {
+                                        if value_lower.contains(pattern) {
+                                            should_remove = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if should_remove {
+                                    break;
+                                }
+                            }
+                        }
+
+                        if should_remove {
+                            el.before("<!--REMOVE-->", ContentType::Html);
+                            el.after("<!--/REMOVE-->", ContentType::Html);
+                            el.remove();
+                        }
+
+                        Ok(())
                     }
-                    Ok(())
-                }),
+                ),
             ],
             ..RewriteStrSettings::default()
         };
 
         let result = rewrite_str(html, settings)?;
-        Ok(result)
+
+        // Second pass: Remove content between REMOVE markers (including newlines)
+        let remove_pattern = regex::Regex::new(r"(?s)<!--REMOVE-->.*?<!--/REMOVE-->").unwrap();
+        let cleaned = remove_pattern.replace_all(&result, "").to_string();
+
+        Ok(cleaned)
     }
 }
 
@@ -386,6 +488,93 @@ mod tests {
     fn test_new() {
         let options = TrekOptions::default();
         let _trek = Trek::new(options);
+    }
+
+    #[test]
+    fn test_fallback_image_extraction() {
+        let trek = Trek::new(TrekOptions::default());
+
+        // HTML with no og:image meta tag but images in content
+        let html = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Test Article</title>
+                <meta name="description" content="Test description">
+            </head>
+            <body>
+                <article>
+                    <h1>Article Title</h1>
+                    <img src="/tracking.gif" width="1" height="1" alt="">
+                    <p>Some text here</p>
+                    <img src="https://example.com/main-image.jpg" width="800" height="600" alt="Main article image">
+                    <p>More content</p>
+                    <img src="https://example.com/another-image.jpg" alt="Another image">
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = trek.parse(html).unwrap();
+
+        // Should extract the first suitable image (not the tracking pixel)
+        assert_eq!(result.metadata.image, "https://example.com/main-image.jpg");
+    }
+
+    #[test]
+    fn test_no_fallback_when_og_image_exists() {
+        let trek = Trek::new(TrekOptions::default());
+
+        // HTML with og:image meta tag
+        let html = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Test Article</title>
+                <meta property="og:image" content="https://example.com/og-image.jpg">
+            </head>
+            <body>
+                <article>
+                    <h1>Article Title</h1>
+                    <img src="https://example.com/content-image.jpg" width="800" height="600" alt="Content image">
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = trek.parse(html).unwrap();
+
+        // Should use og:image, not content image
+        assert_eq!(result.metadata.image, "https://example.com/og-image.jpg");
+    }
+
+    #[test]
+    fn test_no_suitable_images() {
+        let trek = Trek::new(TrekOptions::default());
+
+        // HTML with only small/tracking images
+        let html = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Test Article</title>
+            </head>
+            <body>
+                <article>
+                    <h1>Article Title</h1>
+                    <img src="/tracking.gif" width="1" height="1" alt="">
+                    <img src="/icon.png" width="16" height="16" alt="Icon">
+                    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+                    <p>Content without suitable images</p>
+                </article>
+            </body>
+            </html>
+        "#;
+
+        let result = trek.parse(html).unwrap();
+
+        // Should have empty image since no suitable images found
+        assert_eq!(result.metadata.image, "");
     }
 
     #[test]

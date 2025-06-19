@@ -28,7 +28,8 @@ impl MetadataExtractor {
             metadata.title.clone_from(title);
         }
 
-        if let Some(description) = Self::extract_description(&data.meta_tags) {
+        if let Some(description) = Self::extract_description(&data.schema_org_data, &data.meta_tags)
+        {
             metadata.description = description;
         }
 
@@ -46,7 +47,7 @@ impl MetadataExtractor {
             metadata.site = site;
         }
 
-        if let Some(image) = Self::extract_image(&data.meta_tags) {
+        if let Some(image) = Self::extract_image(&data.schema_org_data, &data.meta_tags) {
             metadata.image = image;
         }
 
@@ -89,7 +90,17 @@ impl MetadataExtractor {
         schema_org_data: &[Value],
         meta_tags: &[MetaTagItem],
     ) -> Option<String> {
-        // Try Open Graph first
+        // Try schema.org first (prioritize structured data)
+        for item in schema_org_data {
+            if let Some(headline) = item.get("headline").and_then(Value::as_str) {
+                return Some(headline.to_string());
+            }
+            if let Some(name) = item.get("name").and_then(Value::as_str) {
+                return Some(name.to_string());
+            }
+        }
+
+        // Try Open Graph as fallback
         for tag in meta_tags {
             if tag.property.as_deref() == Some("og:title") {
                 return Some(tag.content.clone());
@@ -103,20 +114,17 @@ impl MetadataExtractor {
             }
         }
 
-        // Try schema.org as fallback
-        for item in schema_org_data {
-            if let Some(headline) = item.get("headline").and_then(Value::as_str) {
-                return Some(headline.to_string());
-            }
-            if let Some(name) = item.get("name").and_then(Value::as_str) {
-                return Some(name.to_string());
-            }
-        }
-
         None
     }
 
-    fn extract_description(meta_tags: &[MetaTagItem]) -> Option<String> {
+    fn extract_description(schema_org_data: &[Value], meta_tags: &[MetaTagItem]) -> Option<String> {
+        // Try schema.org first
+        for item in schema_org_data {
+            if let Some(description) = item.get("description").and_then(Value::as_str) {
+                return Some(description.to_string());
+            }
+        }
+
         // Try meta description
         for tag in meta_tags {
             if tag.name.as_deref() == Some("description") {
@@ -223,7 +231,32 @@ impl MetadataExtractor {
         None
     }
 
-    fn extract_image(meta_tags: &[MetaTagItem]) -> Option<String> {
+    fn extract_image(schema_org_data: &[Value], meta_tags: &[MetaTagItem]) -> Option<String> {
+        // Try schema.org first
+        for item in schema_org_data {
+            if let Some(image) = item.get("image") {
+                // Handle both string and object representations
+                if let Some(url) = image.as_str() {
+                    return Some(url.to_string());
+                }
+                // Handle ImageObject
+                if let Some(url) = image.get("url").and_then(Value::as_str) {
+                    return Some(url.to_string());
+                }
+                // Handle array of images
+                if let Some(images) = image.as_array() {
+                    if let Some(first_image) = images.first() {
+                        if let Some(url) = first_image.as_str() {
+                            return Some(url.to_string());
+                        }
+                        if let Some(url) = first_image.get("url").and_then(Value::as_str) {
+                            return Some(url.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         // Try Open Graph
         for tag in meta_tags {
             if tag.property.as_deref() == Some("og:image") {

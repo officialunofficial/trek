@@ -676,7 +676,7 @@
         function displayMetadata(container, result) {
             const items = [];
 
-            const fields = ['title', 'author', 'description', 'site', 'published', 'extractorType'];
+            const fields = ['title', 'author', 'description', 'site', 'published', 'extractorType', 'image', 'favicon'];
             fields.forEach(field => {
                 const value = result.get(field);
                 if (value) {
@@ -702,12 +702,33 @@
 
             container.innerHTML = `
                 <div class="metadata">
-                    ${items.map(item => `
-                        <div class="metadata-item">
-                            <div class="metadata-label">${escapeHtml(item.label)}</div>
-                            <div class="metadata-value">${escapeHtml(item.value)}</div>
-                        </div>
-                    `).join('')}
+                    ${items.map(item => {
+                        if (item.label === 'image' || item.label === 'favicon') {
+                            return `
+                                <div class="metadata-item">
+                                    <div class="metadata-label">${escapeHtml(item.label)}</div>
+                                    <div class="metadata-value">
+                                        <img src="${escapeHtml(item.value)}" 
+                                             alt="${item.label}" 
+                                             style="max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 8px; display: block;"
+                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                                             crossorigin="anonymous">
+                                        <div style="display: none; padding: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: center; color: var(--text-tertiary); font-size: 13px; margin-top: 8px;">
+                                            <div style="margin-bottom: 8px;">⚠️ Image blocked by CORS</div>
+                                            <div style="font-size: 11px;">Images from external domains may be blocked by browser security</div>
+                                        </div>
+                                        <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px; word-break: break-all;">${escapeHtml(item.value)}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        return `
+                            <div class="metadata-item">
+                                <div class="metadata-label">${escapeHtml(item.label)}</div>
+                                <div class="metadata-value">${escapeHtml(item.value)}</div>
+                            </div>
+                        `;
+                    }).join('')}
                     ${result.get('debug_info') ? `
                         <div class="metadata-item" style="margin-top: 24px;">
                             <div class="metadata-label">Debug Information</div>

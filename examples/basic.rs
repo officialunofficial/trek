@@ -1,6 +1,6 @@
 //! Basic example of using Trek
 
-use trek::{Trek, TrekOptions};
+use trek_rs::{Trek, TrekOptions};
 
 fn main() -> color_eyre::Result<()> {
     // Initialize color-eyre for nice error formatting
