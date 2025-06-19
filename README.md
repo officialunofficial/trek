@@ -1,5 +1,7 @@
 # Trek
 
+![Trek Banner](https://github.com/officialunofficial/trek/blob/main/banner.png)
+
 A modern web content extraction library written in Rust, compiled to WebAssembly.
 
 Trek removes clutter from web pages and extracts clean, readable content. It's designed as a modern alternative to Mozilla Readability with enhanced features like mobile-aware extraction and consistent HTML standardization.
@@ -20,13 +22,26 @@ Trek removes clutter from web pages and extracts clean, readable content. It's d
 
 ```toml
 [dependencies]
-trek = "0.1"
+trek-rs = "0.1"
 ```
 
-### As a WASM module
+### As a WASM/JavaScript module
 
 ```bash
-npm install @trek/wasm
+npm install @officialunofficial/trek
+```
+
+Or with other package managers:
+
+```bash
+# Yarn
+yarn add @officialunofficial/trek
+
+# pnpm
+pnpm add @officialunofficial/trek
+
+# Bun
+bun add @officialunofficial/trek
 ```
 
 ## Usage
@@ -34,7 +49,7 @@ npm install @trek/wasm
 ### Rust
 
 ```rust
-use trek::{Trek, TrekOptions};
+use trek_rs::{Trek, TrekOptions};
 
 let options = TrekOptions {
     debug: false,
@@ -76,7 +91,10 @@ The playground provides:
 ### JavaScript/TypeScript
 
 ```javascript
-import { TrekWasm } from '@trek/wasm';
+import init, { TrekWasm } from '@officialunofficial/trek';
+
+// Initialize the WASM module
+await init();
 
 const trek = new TrekWasm({
     debug: false,
