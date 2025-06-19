@@ -3,7 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trek Playground</title>
+    <title>Trek Playground - Web Content Tool</title>
+
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="Trek Playground - Web Content Tool">
+    <meta name="description" content="Interactive playground for Trek, a modern web content extraction library. Remove clutter from web pages and extract clean, readable content. Test HTML extraction with live preview.">
+    <meta name="keywords" content="html extraction, content extraction, readability, web scraping, trek, playground, demo">
+    <meta name="author" content="Official Unofficial, Inc.">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/officialunofficial/trek">
+    <meta property="og:title" content="Trek Playground - Web Content Tool">
+    <meta property="og:description" content="Interactive playground for Trek, a modern web content extraction library. Remove clutter from web pages and extract clean, readable content.">
+    <meta property="og:image" content="https://raw.githubusercontent.com/officialunofficial/trek/main/banner.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://github.com/officialunofficial/trek">
+    <meta property="twitter:title" content="Trek Playground - Web Content Tool">
+    <meta property="twitter:description" content="Interactive playground for Trek, a modern web content extraction library. Remove clutter from web pages and extract clean, readable content.">
+    <meta property="twitter:image" content="https://raw.githubusercontent.com/officialunofficial/trek/main/banner.png">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="trek.svg">
+    <link rel="alternate icon" href="/favicon.ico" type="image/x-icon">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700&display=swap');
@@ -708,8 +734,8 @@
                                 <div class="metadata-item">
                                     <div class="metadata-label">${escapeHtml(item.label)}</div>
                                     <div class="metadata-value">
-                                        <img src="${escapeHtml(item.value)}" 
-                                             alt="${item.label}" 
+                                        <img src="${escapeHtml(item.value)}"
+                                             alt="${item.label}"
                                              style="max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 8px; display: block;"
                                              onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
                                              crossorigin="anonymous">
