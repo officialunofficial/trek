@@ -108,7 +108,7 @@
             margin: 0 24px 16px 24px;
             flex-wrap: wrap;
         }
-        
+
         .url-input {
             flex: 1;
             min-width: 300px;
@@ -120,12 +120,12 @@
             color: var(--text-primary);
             transition: border-color var(--transition);
         }
-        
+
         .url-input:focus {
             outline: none;
             border-color: var(--border-hover);
         }
-        
+
         .url-input::placeholder {
             color: var(--text-tertiary);
         }
@@ -349,7 +349,7 @@
             font-size: 14px;
             padding: 16px 0;
         }
-        
+
         .info {
             color: var(--accent);
             font-size: 14px;
@@ -601,7 +601,7 @@
 
                 // Get URL from input if available
                 const urlInput = document.getElementById('urlInput').value.trim();
-                
+
                 trek = new TrekWasm({
                     debug: debug,
                     url: urlInput || null,
@@ -759,16 +759,16 @@
             document.getElementById('statsContainer').innerHTML = '';
             lastResult = null;
         };
-        
+
         window.fetchUrl = async function() {
             const urlInput = document.getElementById('urlInput');
             const url = urlInput.value.trim();
-            
+
             if (!url) {
                 showError('Please enter a URL');
                 return;
             }
-            
+
             // Validate URL
             try {
                 new URL(url);
@@ -776,17 +776,17 @@
                 showError('Please enter a valid URL');
                 return;
             }
-            
+
             const fetchBtn = document.getElementById('fetchBtn');
             const htmlInput = document.getElementById('htmlInput');
             const loading = document.getElementById('loading');
             const errorContainer = document.getElementById('errorContainer');
-            
+
             fetchBtn.disabled = true;
             loading.classList.add('active');
             errorContainer.innerHTML = '';
             htmlInput.value = 'Fetching content...';
-            
+
             try {
                 // Use a public CORS proxy service
                 // Alternative proxies if needed:
@@ -794,32 +794,32 @@
                 // - https://cors-anywhere.herokuapp.com/
                 const proxyUrl = 'https://api.allorigins.win/raw?url=';
                 const response = await fetch(proxyUrl + encodeURIComponent(url));
-                
+
                 if (!response.ok) {
                     throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
                 }
-                
+
                 const html = await response.text();
-                
+
                 if (!html || html.trim().length === 0) {
                     throw new Error('No content received from URL');
                 }
-                
+
                 // Update the HTML input with fetched content
                 htmlInput.value = html;
-                
+
                 // Automatically extract content
                 await extractContent();
-                
+
             } catch (error) {
                 console.error('Fetch error:', error);
                 let errorMessage = `Failed to fetch URL: ${error.message}`;
-                
+
                 if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
                     errorMessage += `\n\nNote: Due to browser security (CORS), some websites cannot be fetched directly. `;
                     errorMessage += `Try:\n• News sites and blogs often work\n• Copy and paste the HTML source manually\n• Use browser extensions that allow CORS`;
                 }
-                
+
                 showError(errorMessage);
                 htmlInput.value = '';
             } finally {
@@ -837,15 +837,15 @@
                 'https://mirror80.com/2016/06/wall-street-movie-80s/',
                 'https://www.theverge.com/news/689093/waymo-nyc-permit-autonomous-testing-new-york-state'
             ];
-            
+
             const randomUrl = exampleUrls[Math.floor(Math.random() * exampleUrls.length)];
             document.getElementById('urlInput').value = randomUrl;
             document.getElementById('htmlInput').value = '';
-            
+
             // Show a tip
             showError('Click "Fetch" to load content from this URL. Note: Not all sites work due to CORS restrictions.', true);
         };
-        
+
         window.loadExample = function() {
             document.getElementById('htmlInput').value = `<!DOCTYPE html>
 <html lang="en">
@@ -939,7 +939,7 @@
         }
 
         initializeTrek();
-        
+
         // Add keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             // Cmd/Ctrl + Enter to extract
@@ -953,7 +953,7 @@
                 clearInput();
             }
         });
-        
+
         // Enter key in URL input triggers fetch
         document.getElementById('urlInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -972,7 +972,7 @@
         let thresholdIncrement = 5;
         let thickLineThresholdMultiple = 3;
         let res = 12; // Slightly larger cells for performance
-        let baseZOffset = 0.00005; // Slower movement for subtlety
+        let baseZOffset = 0.0003; // Slower movement for subtlety
         let lineColor = getComputedStyle(document.documentElement).getPropertyValue('--topograph-color').trim();
 
         let canvas;
