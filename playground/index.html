@@ -697,6 +697,24 @@
                     <div>${content}</div>
                 </article>
             `;
+
+            // Proxy all images in the content
+            const images = container.querySelectorAll('img');
+            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+            
+            images.forEach(img => {
+                const originalSrc = img.src;
+                // Check if it's an external image (not a data URI or relative path)
+                if (originalSrc && originalSrc.startsWith('http')) {
+                    img.src = proxyUrl + encodeURIComponent(originalSrc);
+                    img.setAttribute('data-original-src', originalSrc);
+                    img.onerror = function() {
+                        // If proxy fails, try loading the original
+                        this.onerror = null;
+                        this.src = this.getAttribute('data-original-src');
+                    };
+                }
+            });
         }
 
         function displayMetadata(container, result) {
@@ -730,18 +748,23 @@
                 <div class="metadata">
                     ${items.map(item => {
                         if (item.label === 'image' || item.label === 'favicon') {
+                            // Try to proxy the image through a CORS proxy
+                            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                            const proxiedImageUrl = proxyUrl + encodeURIComponent(item.value);
+                            
                             return `
                                 <div class="metadata-item">
                                     <div class="metadata-label">${escapeHtml(item.label)}</div>
                                     <div class="metadata-value">
-                                        <img src="${escapeHtml(item.value)}"
+                                        <img src="${escapeHtml(proxiedImageUrl)}"
                                              alt="${item.label}"
                                              style="max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 8px; display: block;"
-                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                                             onerror="this.onerror=null; this.src='${escapeHtml(item.value)}'; this.setAttribute('data-proxy-failed', 'true');"
+                                             onload="if(this.getAttribute('data-proxy-failed')) { this.nextElementSibling.style.display='block'; }"
                                              crossorigin="anonymous">
-                                        <div style="display: none; padding: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: center; color: var(--text-tertiary); font-size: 13px; margin-top: 8px;">
-                                            <div style="margin-bottom: 8px;">⚠️ Image blocked by CORS</div>
-                                            <div style="font-size: 11px;">Images from external domains may be blocked by browser security</div>
+                                        <div style="display: none; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: center; color: var(--text-tertiary); font-size: 12px; margin-top: 8px;">
+                                            <div style="margin-bottom: 4px;">⚠️ Direct image loading</div>
+                                            <div style="font-size: 11px;">Image proxy failed, loaded directly (may be blocked by CORS)</div>
                                         </div>
                                         <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px; word-break: break-all;">${escapeHtml(item.value)}</div>
                                     </div>
