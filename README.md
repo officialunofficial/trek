@@ -2,6 +2,8 @@
 
 ![Trek Banner](https://github.com/officialunofficial/trek/blob/main/banner.png)
 
+[![Crates.io](https://img.shields.io/crates/v/trek-rs.svg)](https://crates.io/crates/trek-rs) [![npm](https://img.shields.io/npm/v/@officialunofficial/trek.svg)](https://www.npmjs.com/package/@officialunofficial/trek)
+
 A modern web content extraction library written in Rust, compiled to WebAssembly.
 
 Trek removes clutter from web pages and extracts clean, readable content. It's designed as a modern alternative to Mozilla Readability with enhanced features like mobile-aware extraction and consistent HTML standardization.
