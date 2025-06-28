@@ -35,7 +35,6 @@ pub mod utils;
 pub mod wasm;
 
 use crate::extractor::{ExtractorRegistry, GenericExtractor};
-use crate::extractors::FarcasterExtractor;
 use crate::metadata::MetadataExtractor;
 pub use crate::types::{MetaTagItem, TrekOptions, TrekResponse};
 
@@ -53,7 +52,6 @@ impl Trek {
         let mut extractor_registry = ExtractorRegistry::new();
         // Register built-in extractors
         extractor_registry.register(Box::new(GenericExtractor));
-        extractor_registry.register(Box::new(FarcasterExtractor));
 
         Self {
             options,
@@ -219,16 +217,19 @@ impl Trek {
                 element!("meta[name], meta[property]", move |el| {
                     if let Some(content) = el.get_attribute("content") {
                         let mut data = data_clone.lock().expect("Failed to acquire lock");
+                        
+                        // Decode HTML entities
+                        let decoded_content = utils::decode_html_entities(&content);
 
                         // Check for fc:frame meta tag
                         if el.get_attribute("name").as_deref() == Some("fc:frame") {
-                            data.mini_app_embed = Some(content.clone());
+                            data.mini_app_embed = Some(decoded_content.clone());
                         }
 
                         data.meta_tags.push(MetaTagItem {
                             name: el.get_attribute("name"),
                             property: el.get_attribute("property"),
-                            content: utils::decode_html_entities(&content),
+                            content: decoded_content,
                         });
                     }
                     Ok(())

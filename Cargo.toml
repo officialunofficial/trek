@@ -1,6 +1,6 @@
 [package]
 name = "trek-rs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["christopherwxyz"]
 description = "A web content extraction library that removes clutter from web pages"

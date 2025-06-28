@@ -825,7 +825,7 @@
                 </article>
             `;
 
-            // Proxy all images in the content
+            // Proxy all images in the content with crossorigin
             const images = container.querySelectorAll('img');
             const proxyUrl = 'https://api.allorigins.win/raw?url=';
             
@@ -835,10 +835,12 @@
                 if (originalSrc && originalSrc.startsWith('http')) {
                     img.src = proxyUrl + encodeURIComponent(originalSrc);
                     img.setAttribute('data-original-src', originalSrc);
+                    img.setAttribute('crossorigin', 'anonymous');
                     img.onerror = function() {
-                        // If proxy fails, try loading the original
+                        // If proxy fails, try loading the original with crossorigin
                         this.onerror = null;
                         this.src = this.getAttribute('data-original-src');
+                        this.setAttribute('crossorigin', 'anonymous');
                     };
                 }
             });
@@ -886,13 +888,8 @@
                                         <img src="${escapeHtml(proxiedImageUrl)}"
                                              alt="${item.label}"
                                              style="max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 8px; display: block;"
-                                             onerror="this.onerror=null; this.src='${escapeHtml(item.value)}'; this.setAttribute('data-proxy-failed', 'true');"
-                                             onload="if(this.getAttribute('data-proxy-failed')) { this.nextElementSibling.style.display='block'; }"
-                                             crossorigin="anonymous">
-                                        <div style="display: none; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; text-align: center; color: var(--text-tertiary); font-size: 12px; margin-top: 8px;">
-                                            <div style="margin-bottom: 4px;">⚠️ Direct image loading</div>
-                                            <div style="font-size: 11px;">Image proxy failed, loaded directly (may be blocked by CORS)</div>
-                                        </div>
+                                             crossorigin="anonymous"
+                                             onerror="this.onerror=null; this.src='${escapeHtml(item.value)}'; this.setAttribute('crossorigin', 'anonymous');">
                                         <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px; word-break: break-all;">${escapeHtml(item.value)}</div>
                                     </div>
                                 </div>
@@ -924,14 +921,18 @@
             }
             
             // Mini app preview following Farcaster's 3:2 aspect ratio
+            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+            const proxiedImageUrl = proxyUrl + encodeURIComponent(miniAppEmbed.imageUrl);
+            
             container.innerHTML = `
                 <div class="miniapp-preview">
                     <div class="miniapp-frame">
-                        <img src="${escapeHtml(miniAppEmbed.imageUrl)}" 
+                        <img src="${escapeHtml(proxiedImageUrl)}" 
                              alt="Mini App Preview" 
                              class="miniapp-image"
                              crossorigin="anonymous"
-                             onerror="this.onerror=null; this.crossOrigin=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2Y1ZjVmNSIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IiM5OTkiPkltYWdlIExvYWQgRmFpbGVkPC90ZXh0Pgo8L3N2Zz4=';">
+                             data-original-src="${escapeHtml(miniAppEmbed.imageUrl)}"
+                             onerror="this.onerror=null; this.src=this.getAttribute('data-original-src'); this.setAttribute('crossorigin', 'anonymous');">
                         <div class="miniapp-button-container">
                             <button class="miniapp-button">
                                 ${escapeHtml(miniAppEmbed.button.title)}
@@ -958,11 +959,12 @@
                         <div class="miniapp-section">
                             <h4>Splash Screen</h4>
                             ${miniAppEmbed.button.action.splashImageUrl ? `
-                                <img src="${escapeHtml(miniAppEmbed.button.action.splashImageUrl)}" 
+                                <img src="${escapeHtml(proxyUrl + encodeURIComponent(miniAppEmbed.button.action.splashImageUrl))}" 
                                      alt="Splash Image" 
                                      class="miniapp-splash-image"
                                      crossorigin="anonymous"
-                                     onerror="this.style.display='none';">
+                                     data-original-src="${escapeHtml(miniAppEmbed.button.action.splashImageUrl)}"
+                                     onerror="this.onerror=null; this.src=this.getAttribute('data-original-src'); this.setAttribute('crossorigin', 'anonymous');">
                             ` : ''}
                             ${miniAppEmbed.button.action.splashBackgroundColor ? `
                                 <div class="miniapp-color-preview">
