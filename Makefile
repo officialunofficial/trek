@@ -157,6 +157,27 @@ changelog: ## Generate changelog
 	@command -v git-cliff >/dev/null 2>&1 || { echo "$(RED)git-cliff not found. Install with: cargo install git-cliff$(NC)" >&2; exit 1; }
 	git-cliff -o CHANGELOG.md
 
+.PHONY: changelog-unreleased
+changelog-unreleased: ## Show unreleased changes
+	@echo "$(YELLOW)Showing unreleased changes...$(NC)"
+	@command -v git-cliff >/dev/null 2>&1 || { echo "$(RED)git-cliff not found. Install with: cargo install git-cliff$(NC)" >&2; exit 1; }
+	git-cliff --unreleased
+
+.PHONY: changelog-tag
+changelog-tag: ## Generate changelog for a specific tag
+	@echo "$(YELLOW)Generating changelog for tag $(TAG)...$(NC)"
+	@command -v git-cliff >/dev/null 2>&1 || { echo "$(RED)git-cliff not found. Install with: cargo install git-cliff$(NC)" >&2; exit 1; }
+	@test -n "$(TAG)" || { echo "$(RED)Please specify TAG=v0.x.x$(NC)" >&2; exit 1; }
+	git-cliff --tag $(TAG) -o CHANGELOG.md
+
+.PHONY: version-bump
+version-bump: ## Suggest next version based on commits
+	@echo "$(YELLOW)Analyzing commits for version bump...$(NC)"
+	@command -v git-cliff >/dev/null 2>&1 || { echo "$(RED)git-cliff not found. Install with: cargo install git-cliff$(NC)" >&2; exit 1; }
+	@echo "Current version: $$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)"
+	@echo "Suggested next version based on commits:"
+	@git-cliff --bumped-version
+
 .PHONY: install-dev-deps
 install-dev-deps: ## Install development dependencies
 	@echo "$(YELLOW)Installing development dependencies...$(NC)"
@@ -166,6 +187,13 @@ install-dev-deps: ## Install development dependencies
 	$(CARGO) install git-cliff
 	$(CARGO) install wasm-pack
 	@echo "$(GREEN)Development dependencies installed!$(NC)"
+
+.PHONY: setup-git
+setup-git: ## Configure git for conventional commits
+	@echo "$(YELLOW)Configuring git for conventional commits...$(NC)"
+	git config --local commit.template .gitmessage
+	@echo "$(GREEN)Git configured to use .gitmessage template!$(NC)"
+	@echo "$(BLUE)Tip: Use 'git commit' (without -m) to use the template$(NC)"
 
 .PHONY: pre-commit
 pre-commit: fmt check clippy test ## Run pre-commit checks

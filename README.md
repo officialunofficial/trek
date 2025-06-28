@@ -139,6 +139,44 @@ cargo fmt
 git cliff -o CHANGELOG.md
 ```
 
+## Contributing
+
+We welcome contributions! Trek uses conventional commits and automated changelog generation.
+
+### Quick Start
+
+```bash
+# Install development dependencies
+make install-dev-deps
+
+# Configure git for conventional commits
+make setup-git
+
+# Run pre-commit checks
+make pre-commit
+```
+
+### Commit Message Format
+
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+
+**Examples:**
+- `feat(wasm): add support for custom headers`
+- `fix(parser): handle empty meta tags correctly`
+- `docs: update installation instructions`
+
+For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Credits
 
 Trek is a fork of [Defuddle](https://github.com/kepano/defuddle) by [@kepano](https://github.com/kepano), refactored into Rust, adding WebAssembly support, site-specific extractors, and additional features.

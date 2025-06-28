@@ -1,0 +1,42 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# --- COMMIT END ---
+# Type can be:
+#   feat     - new feature
+#   fix      - bug fix
+#   docs     - changes to documentation
+#   style    - formatting, missing semi colons, etc (no code change)
+#   refactor - refactoring production code
+#   test     - adding tests, refactoring tests (no production code change)
+#   chore    - updating build tasks, package manager configs, etc (no production code change)
+#   build    - changes that affect the build system or external dependencies
+#   ci       - changes to CI configuration files and scripts
+#   perf     - performance improvements
+#   revert   - reverting a previous commit
+#
+# Scope is optional and can be anything specifying the place of the commit change.
+# Examples: api, parser, wasm, extractor, metadata, etc.
+#
+# Subject should use imperative tone: "change" not "changed" nor "changes"
+# Don't capitalize first letter
+# No period at the end
+#
+# Body should include motivation for the change and contrasts with previous behavior
+#
+# Footer should contain any information about Breaking Changes and is also
+# the place to reference GitHub issues that this commit closes
+#
+# Breaking Changes should start with "BREAKING CHANGE:" with a space or two newlines.
+# The rest of the commit message is then used for this.
+#
+# Example:
+# feat(wasm): add support for custom headers
+#
+# Allow users to pass custom headers when extracting content.
+# This enables authentication and custom user agents.
+#
+# Closes #123
