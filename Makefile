@@ -195,6 +195,16 @@ setup-git: ## Configure git for conventional commits
 	@echo "$(GREEN)Git configured to use .gitmessage template!$(NC)"
 	@echo "$(BLUE)Tip: Use 'git commit' (without -m) to use the template$(NC)"
 
+.PHONY: setup-hooks
+setup-hooks: ## Install git hooks for commit validation
+	@echo "$(YELLOW)Installing git hooks...$(NC)"
+	@mkdir -p .git/hooks
+	@echo '#!/bin/bash' > .git/hooks/commit-msg
+	@echo './scripts/validate-commit.sh "$$1"' >> .git/hooks/commit-msg
+	@chmod +x .git/hooks/commit-msg
+	@echo "$(GREEN)Git hooks installed!$(NC)"
+	@echo "$(BLUE)Commits will now be validated for conventional format$(NC)"
+
 .PHONY: pre-commit
 pre-commit: fmt check clippy test ## Run pre-commit checks
 	@echo "$(GREEN)All pre-commit checks passed!$(NC)"
