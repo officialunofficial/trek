@@ -23,6 +23,7 @@ pub mod constants;
 pub mod elements;
 pub mod error;
 pub mod extractor;
+pub mod extractors;
 pub mod html_to_text;
 pub mod metadata;
 pub mod scoring;
@@ -34,6 +35,7 @@ pub mod utils;
 pub mod wasm;
 
 use crate::extractor::{ExtractorRegistry, GenericExtractor};
+use crate::extractors::FarcasterExtractor;
 use crate::metadata::MetadataExtractor;
 pub use crate::types::{MetaTagItem, TrekOptions, TrekResponse};
 
@@ -51,6 +53,7 @@ impl Trek {
         let mut extractor_registry = ExtractorRegistry::new();
         // Register built-in extractors
         extractor_registry.register(Box::new(GenericExtractor));
+        extractor_registry.register(Box::new(FarcasterExtractor));
 
         Self {
             options,
@@ -178,7 +181,7 @@ impl Trek {
 
         // If no metadata image found, try to extract first suitable image from content
         if final_metadata.image.is_empty() {
-            if let Some(first_image) = self.extract_first_image_from_content(&final_content) {
+            if let Some(first_image) = Self::extract_first_image_from_content(&final_content) {
                 debug!("Found first image in content: {}", first_image);
                 final_metadata.image = first_image;
             }
@@ -216,6 +219,12 @@ impl Trek {
                 element!("meta[name], meta[property]", move |el| {
                     if let Some(content) = el.get_attribute("content") {
                         let mut data = data_clone.lock().expect("Failed to acquire lock");
+
+                        // Check for fc:frame meta tag
+                        if el.get_attribute("name").as_deref() == Some("fc:frame") {
+                            data.mini_app_embed = Some(content.clone());
+                        }
+
                         data.meta_tags.push(MetaTagItem {
                             name: el.get_attribute("name"),
                             property: el.get_attribute("property"),
@@ -334,7 +343,8 @@ impl Trek {
         html.trim_start_matches('\n').to_string()
     }
 
-    fn extract_first_image_from_content(&self, html: &str) -> Option<String> {
+    #[allow(clippy::disallowed_methods)] // lol_html macros use unwrap internally
+    fn extract_first_image_from_content(html: &str) -> Option<String> {
         use lol_html::{RewriteStrSettings, element, rewrite_str};
 
         let first_image = Arc::new(Mutex::new(None::<String>));
@@ -369,6 +379,7 @@ impl Trek {
                         }
                     }
                 }
+                drop(image_guard);
 
                 Ok(())
             })],
@@ -379,14 +390,13 @@ impl Trek {
         let _ = rewrite_str(html, settings).ok()?;
 
         // Extract the result
-        let result = Arc::try_unwrap(first_image)
-            .map(|mutex| mutex.into_inner().expect("Failed to get inner value"))
-            .unwrap_or_else(|arc| {
+        match Arc::try_unwrap(first_image) {
+            Ok(mutex) => mutex.into_inner().expect("Failed to get inner value"),
+            Err(arc) => {
                 let guard = arc.lock().expect("Failed to acquire lock");
                 guard.clone()
-            });
-
-        result
+            }
+        }
     }
 
     #[allow(clippy::unused_self, clippy::disallowed_methods)] // lol_html macros use unwrap internally
@@ -478,6 +488,7 @@ pub struct CollectedData {
     pub schema_org_data: Vec<Value>,
     pub title: Option<String>,
     pub favicon: Option<String>,
+    pub mini_app_embed: Option<String>,
 }
 
 #[cfg(test)]
