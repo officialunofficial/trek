@@ -476,6 +476,133 @@
         }
 
 
+        /* Mini App styles */
+        .miniapp-preview {
+            display: grid;
+            gap: 32px;
+            max-width: 800px;
+        }
+
+        .miniapp-frame {
+            width: 100%;
+            max-width: 600px;
+            border-radius: var(--radius);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .miniapp-image {
+            width: 100%;
+            aspect-ratio: 3 / 2;
+            object-fit: cover;
+            display: block;
+        }
+
+        .miniapp-button-container {
+            padding: 16px;
+            background: var(--accent);
+        }
+
+        .miniapp-button {
+            width: 100%;
+            padding: 12px 24px;
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+            border-radius: var(--radius-small);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .miniapp-button:hover {
+            background: white;
+            color: var(--accent);
+        }
+
+        .miniapp-details {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .miniapp-details h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .miniapp-section {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .miniapp-section:last-child {
+            border-bottom: none;
+        }
+
+        .miniapp-section h4 {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin: 0 0 8px 0;
+        }
+
+        .miniapp-section p {
+            margin: 4px 0;
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+
+        .miniapp-section a {
+            color: var(--accent);
+            text-decoration: none;
+            word-break: break-all;
+        }
+
+        .miniapp-section a:hover {
+            text-decoration: underline;
+        }
+
+        .miniapp-splash-image {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            border-radius: var(--radius-small);
+            border: 1px solid var(--border);
+            margin-top: 8px;
+        }
+
+        .miniapp-color-preview {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .color-swatch {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-small);
+            border: 1px solid var(--border);
+        }
+
+        .miniapp-json {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            background: var(--surface);
+            padding: 16px;
+            border-radius: var(--radius-small);
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
@@ -489,6 +616,10 @@
             .options {
                 flex-direction: column;
                 gap: 12px;
+            }
+
+            .miniapp-frame {
+                max-width: 100%;
             }
         }
 
@@ -569,6 +700,7 @@
             <div class="tabs">
                 <button class="tab active" onclick="switchTab('metadata')">Metadata</button>
                 <button class="tab" onclick="switchTab('content')">Content</button>
+                <button class="tab" onclick="switchTab('miniapp')">Mini App</button>
                 <button class="tab" onclick="switchTab('raw')">Raw</button>
             </div>
 
@@ -592,15 +724,7 @@
         let currentTab = 'metadata';
         let lastResult = null;
 
-        async function initializeTrek() {
-            try {
-                await init();
-            } catch (error) {
-                console.error('Failed to initialize Trek:', error);
-                showError('Failed to initialize Trek. Please refresh the page.');
-            }
-        }
-
+        // Define all window functions immediately
         window.extractContent = async function() {
             const input = document.getElementById('htmlInput').value.trim();
 
@@ -672,6 +796,9 @@
                     break;
                 case 'content':
                     displayContent(output, lastResult);
+                    break;
+                case 'miniapp':
+                    displayMiniApp(output, lastResult);
                     break;
                 case 'raw':
                     displayRawJSON(output, lastResult);
@@ -784,6 +911,73 @@
                             <div class="metadata-value"><pre style="font-family: 'SF Mono', Monaco, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; margin: 0; color: var(--text-secondary);">${escapeHtml(result.get('debug_info'))}</pre></div>
                         </div>
                     ` : ''}
+                </div>
+            `;
+        }
+
+        function displayMiniApp(container, result) {
+            const miniAppEmbed = result.get('miniAppEmbed');
+            
+            if (!miniAppEmbed) {
+                container.innerHTML = '<div class="empty">No Mini App data found. Try fetching a URL with fc:frame meta tag.</div>';
+                return;
+            }
+            
+            // Mini app preview following Farcaster's 3:2 aspect ratio
+            container.innerHTML = `
+                <div class="miniapp-preview">
+                    <div class="miniapp-frame">
+                        <img src="${escapeHtml(miniAppEmbed.imageUrl)}" 
+                             alt="Mini App Preview" 
+                             class="miniapp-image"
+                             crossorigin="anonymous"
+                             onerror="this.onerror=null; this.crossOrigin=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2Y1ZjVmNSIvPgogIDx0ZXh0IHg9IjUwJSIgeT0iNTAlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IiM5OTkiPkltYWdlIExvYWQgRmFpbGVkPC90ZXh0Pgo8L3N2Zz4=';">
+                        <div class="miniapp-button-container">
+                            <button class="miniapp-button">
+                                ${escapeHtml(miniAppEmbed.button.title)}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="miniapp-details">
+                        <h3>Mini App Details</h3>
+                        
+                        <div class="miniapp-section">
+                            <h4>Version</h4>
+                            <p>${escapeHtml(miniAppEmbed.version)}</p>
+                        </div>
+                        
+                        <div class="miniapp-section">
+                            <h4>Button Action</h4>
+                            <p><strong>Type:</strong> ${escapeHtml(miniAppEmbed.button.action.type || miniAppEmbed.button.action.actionType || 'launch_frame')}</p>
+                            ${miniAppEmbed.button.action.url ? `<p><strong>URL:</strong> <a href="${escapeHtml(miniAppEmbed.button.action.url)}" target="_blank" rel="noopener">${escapeHtml(miniAppEmbed.button.action.url)}</a></p>` : ''}
+                            ${miniAppEmbed.button.action.name ? `<p><strong>App Name:</strong> ${escapeHtml(miniAppEmbed.button.action.name)}</p>` : ''}
+                        </div>
+                        
+                        ${miniAppEmbed.button.action.splashImageUrl || miniAppEmbed.button.action.splashBackgroundColor ? `
+                        <div class="miniapp-section">
+                            <h4>Splash Screen</h4>
+                            ${miniAppEmbed.button.action.splashImageUrl ? `
+                                <img src="${escapeHtml(miniAppEmbed.button.action.splashImageUrl)}" 
+                                     alt="Splash Image" 
+                                     class="miniapp-splash-image"
+                                     crossorigin="anonymous"
+                                     onerror="this.style.display='none';">
+                            ` : ''}
+                            ${miniAppEmbed.button.action.splashBackgroundColor ? `
+                                <div class="miniapp-color-preview">
+                                    <div class="color-swatch" style="background-color: ${escapeHtml(miniAppEmbed.button.action.splashBackgroundColor)};"></div>
+                                    <span>${escapeHtml(miniAppEmbed.button.action.splashBackgroundColor)}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
+                        
+                        <div class="miniapp-section">
+                            <h4>Raw Data</h4>
+                            <pre class="miniapp-json">${JSON.stringify(miniAppEmbed, null, 2)}</pre>
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -905,7 +1099,8 @@
                 'https://www.instyle.com/sardine-girl-summer-fashion-trend-11752920',
                 'https://justine.lol/history/',
                 'https://mirror80.com/2016/06/wall-street-movie-80s/',
-                'https://www.theverge.com/news/689093/waymo-nyc-permit-autonomous-testing-new-york-state'
+                'https://www.theverge.com/news/689093/waymo-nyc-permit-autonomous-testing-new-york-state',
+                'https://crowdfund.seedclub.com/c/cmcamk1l500v6vy0tbg09o6vj'
             ];
 
             const randomUrl = exampleUrls[Math.floor(Math.random() * exampleUrls.length)];
@@ -1008,29 +1203,49 @@
             return div.innerHTML;
         }
 
+        // Initialize Trek WASM
+        async function initializeTrek() {
+            try {
+                await init();
+            } catch (error) {
+                console.error('Failed to initialize Trek:', error);
+                showError('Failed to initialize Trek. Please refresh the page.');
+            }
+        }
+
+        // Call initialization after all functions are defined
         initializeTrek();
 
-        // Add keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            // Cmd/Ctrl + Enter to extract
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                extractContent();
-            }
-            // Cmd/Ctrl + K to clear
-            else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                clearInput();
-            }
-        });
+        // Ensure DOM is loaded before adding event listeners
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupEventListeners);
+        } else {
+            setupEventListeners();
+        }
 
-        // Enter key in URL input triggers fetch
-        document.getElementById('urlInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                fetchUrl();
-            }
-        });
+        function setupEventListeners() {
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Cmd/Ctrl + Enter to extract
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    extractContent();
+                }
+                // Cmd/Ctrl + K to clear
+                else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                    e.preventDefault();
+                    clearInput();
+                }
+            });
+
+            // Enter key in URL input triggers fetch
+            document.getElementById('urlInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    fetchUrl();
+                }
+            });
+        }
     </script>
 
     <script type="module">

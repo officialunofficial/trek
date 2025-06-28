@@ -1,11 +1,11 @@
 //! Metadata extraction functionality
 
 use crate::CollectedData;
-use crate::types::{MetaTagItem, TrekMetadata};
+use crate::types::{MetaTagItem, MiniAppEmbed, TrekMetadata};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 static TITLE_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<title[^>]*>(.*?)</title>").expect("Invalid regex"));
@@ -67,6 +67,19 @@ impl MetadataExtractor {
 
         // Include schema.org data
         metadata.schema_org_data.clone_from(&data.schema_org_data);
+
+        // Parse mini app embed if present
+        if let Some(embed_json) = &data.mini_app_embed {
+            match serde_json::from_str::<MiniAppEmbed>(embed_json) {
+                Ok(embed) => {
+                    debug!("Successfully parsed Mini App embed");
+                    metadata.mini_app_embed = Some(embed);
+                }
+                Err(e) => {
+                    debug!("Failed to parse Mini App embed JSON: {}", e);
+                }
+            }
+        }
 
         metadata
     }

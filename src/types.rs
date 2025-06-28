@@ -97,6 +97,9 @@ pub struct TrekMetadata {
 
     /// Word count
     pub word_count: usize,
+
+    /// Mini App embed data from fc:frame meta tag
+    pub mini_app_embed: Option<MiniAppEmbed>,
 }
 
 /// Meta tag information
@@ -157,4 +160,58 @@ pub struct ExtractedContent {
 
     /// Additional variables
     pub variables: Option<ExtractorVariables>,
+}
+
+/// Mini App action type
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MiniAppActionType {
+    LaunchFrame,
+    ViewToken,
+}
+
+/// Mini App action
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MiniAppAction {
+    /// Action type
+    #[serde(rename = "type")]
+    pub action_type: MiniAppActionType,
+
+    /// App URL to open
+    pub url: Option<String>,
+
+    /// Name of the application
+    pub name: Option<String>,
+
+    /// URL of image to show on loading screen
+    pub splash_image_url: Option<String>,
+
+    /// Hex color code to use on loading screen
+    pub splash_background_color: Option<String>,
+}
+
+/// Mini App button
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MiniAppButton {
+    /// Mini App name
+    pub title: String,
+
+    /// Button action
+    pub action: MiniAppAction,
+}
+
+/// Mini App embed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MiniAppEmbed {
+    /// Version of the embed
+    pub version: String,
+
+    /// Image URL for the embed
+    pub image_url: String,
+
+    /// Button configuration
+    pub button: MiniAppButton,
 }

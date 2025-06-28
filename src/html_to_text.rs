@@ -37,6 +37,7 @@ pub fn html_to_text(html: &str) -> String {
             element!("br", move |_el| {
                 let mut text = text_clone.lock().unwrap();
                 text.push('\n');
+                drop(text);
                 Ok(())
             }),
             // Handle paragraphs and divs - add newlines
@@ -46,6 +47,7 @@ pub fn html_to_text(html: &str) -> String {
                 if !text.is_empty() && !text.ends_with('\n') {
                     text.push('\n');
                 }
+                drop(text);
 
                 el.after("\n", lol_html::html_content::ContentType::Text);
                 Ok(())
@@ -57,6 +59,7 @@ pub fn html_to_text(html: &str) -> String {
                 if !text.is_empty() && !text.ends_with('\n') {
                     text.push('\n');
                 }
+                drop(text);
 
                 el.after("\n\n", lol_html::html_content::ContentType::Text);
                 Ok(())
@@ -68,6 +71,7 @@ pub fn html_to_text(html: &str) -> String {
                     text.push('\n');
                 }
                 text.push_str("• ");
+                drop(text);
 
                 el.after("\n", lol_html::html_content::ContentType::Text);
                 Ok(())
@@ -76,8 +80,8 @@ pub fn html_to_text(html: &str) -> String {
             element!("img", move |el| {
                 if let Some(alt) = el.get_attribute("alt") {
                     if !alt.trim().is_empty() {
-                        let mut text = text_clone6.lock().unwrap();
                         use std::fmt::Write;
+                        let mut text = text_clone6.lock().unwrap();
                         let _ = write!(text, " [Image: {}] ", alt.trim());
                     }
                 }
