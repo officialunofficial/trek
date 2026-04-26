@@ -51,6 +51,21 @@ test-verbose: ## Run tests with verbose output
 	@echo "$(YELLOW)Running tests (verbose)...$(NC)"
 	$(CARGO) test -- --nocapture
 
+.PHONY: test-fixtures
+test-fixtures: ## Run the metadata-only Defuddle parity fixtures
+	@echo "$(YELLOW)Running fixtures parity (metadata only)...$(NC)"
+	$(CARGO) test --test fixtures_test
+
+.PHONY: test-fixtures-full
+test-fixtures-full: ## Run fixtures parity including markdown-body diff
+	@echo "$(YELLOW)Running fixtures parity (with markdown body diff)...$(NC)"
+	$(CARGO) test --test fixtures_test --features markdown-fixtures
+
+.PHONY: update-fixtures
+update-fixtures: ## Regenerate tests/expected/*.md from current Trek output
+	@echo "$(YELLOW)Regenerating expected fixtures from Trek output...$(NC)"
+	TREK_UPDATE_FIXTURES=1 $(CARGO) test --test fixtures_test --features markdown-fixtures -- --nocapture
+
 .PHONY: fmt
 fmt: ## Format the code
 	@echo "$(YELLOW)Formatting code...$(NC)"
@@ -208,6 +223,21 @@ setup-hooks: ## Install git hooks for commit validation
 .PHONY: pre-commit
 pre-commit: fmt check clippy test ## Run pre-commit checks
 	@echo "$(GREEN)All pre-commit checks passed!$(NC)"
+
+.PHONY: worker-dev
+worker-dev: ## Run the Trek Cloudflare Worker locally
+	@echo "$(YELLOW)Starting wrangler dev (Trek worker)...$(NC)"
+	cd worker && npx wrangler dev
+
+.PHONY: worker-deploy
+worker-deploy: ## Deploy the Trek Cloudflare Worker
+	@echo "$(YELLOW)Deploying Trek worker...$(NC)"
+	cd worker && npx wrangler deploy
+
+.PHONY: worker-deploy-dry
+worker-deploy-dry: ## Dry-run the Trek Worker deploy and emit the bundle
+	@echo "$(YELLOW)Dry-running Trek worker deploy...$(NC)"
+	cd worker && npx wrangler deploy --dry-run --outdir=dist
 
 .PHONY: npm-publish
 npm-publish: wasm-build ## Publish to npm registry

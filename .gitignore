@@ -29,3 +29,5 @@ flamegraph.svg
 
 # Environment variables
 .env
+.claude/
+excalidraw.log

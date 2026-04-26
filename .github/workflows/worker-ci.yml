@@ -1,0 +1,39 @@
+name: Worker CI
+
+on:
+  pull_request:
+    paths:
+      - "worker/**"
+      - "playground/**"
+      - ".github/workflows/worker-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "worker/**"
+      - "playground/**"
+      - ".github/workflows/worker-ci.yml"
+
+jobs:
+  build:
+    name: Build & dry-run deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wrangler dry-run deploy
+        run: npx wrangler deploy --dry-run --outdir=dist

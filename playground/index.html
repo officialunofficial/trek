@@ -27,6 +27,11 @@
     <meta property="twitter:description" content="Interactive playground for Trek, a modern web content extraction library. Remove clutter from web pages and extract clean, readable content.">
     <meta property="twitter:image" content="https://raw.githubusercontent.com/officialunofficial/trek/main/banner.png">
 
+    <!-- Trek API base. Override by setting `content` to e.g.
+         "https://trek-worker.example.workers.dev". When the Playground is
+         served by the Worker itself this can stay empty (same-origin). -->
+    <meta name="trek-api-base" content="">
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="trek.svg">
     <link rel="alternate icon" href="/favicon.ico" type="image/x-icon">
@@ -724,6 +729,22 @@
         let currentTab = 'metadata';
         let lastResult = null;
 
+        // Resolve the Trek API base URL once. Order of precedence:
+        //   1. window.TREK_API_BASE   (runtime override, e.g. for tests)
+        //   2. <meta name="trek-api-base" content="...">
+        //   3. ""  (same origin — works when the Playground is served by
+        //          the Trek Worker)
+        function getApiBase() {
+            if (typeof window !== 'undefined' && typeof window.TREK_API_BASE === 'string') {
+                return window.TREK_API_BASE.replace(/\/$/, '');
+            }
+            const meta = document.querySelector('meta[name="trek-api-base"]');
+            const fromMeta = meta && meta.getAttribute('content');
+            if (fromMeta) return fromMeta.replace(/\/$/, '');
+            return '';
+        }
+        const API_BASE = getApiBase();
+
         // Define all window functions immediately
         window.extractContent = async function() {
             const input = document.getElementById('htmlInput').value.trim();
@@ -1051,39 +1072,50 @@
             fetchBtn.disabled = true;
             loading.classList.add('active');
             errorContainer.innerHTML = '';
-            htmlInput.value = 'Fetching content...';
+            htmlInput.value = 'Fetching content via Trek API…';
 
             try {
-                // Use a public CORS proxy service
-                // Alternative proxies if needed:
-                // - https://corsproxy.io/?
-                // - https://cors-anywhere.herokuapp.com/
-                const proxyUrl = 'https://api.allorigins.win/raw?url=';
-                const response = await fetch(proxyUrl + encodeURIComponent(url));
+                // Call the Trek Worker's /api/extract endpoint. This both
+                // fetches the URL server-side (no CORS issues) and runs the
+                // Trek extractor in the Worker, returning the parsed JSON.
+                const apiUrl = `${API_BASE}/api/extract?url=${encodeURIComponent(url)}`;
+                const startTime = performance.now();
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const endTime = performance.now();
 
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                    let detail = '';
+                    try {
+                        const errBody = await response.json();
+                        detail = errBody && (errBody.detail || errBody.error)
+                            ? `: ${errBody.detail || errBody.error}` : '';
+                    } catch (_) { /* response wasn't JSON */ }
+                    throw new Error(`Trek API returned ${response.status} ${response.statusText}${detail}`);
                 }
 
-                const html = await response.text();
+                const data = await response.json();
 
-                if (!html || html.trim().length === 0) {
-                    throw new Error('No content received from URL');
-                }
+                // Show the response payload as the "raw" HTML in the editor
+                // so users can see what came back from the API.
+                htmlInput.value = JSON.stringify(data, null, 2);
 
-                // Update the HTML input with fetched content
-                htmlInput.value = html;
+                // Wire up the result for display.
+                const resultMap = new Map(Object.entries(data));
+                resultMap.set('extractTime', Math.round(endTime - startTime));
+                lastResult = resultMap;
 
-                // Automatically extract content
-                await extractContent();
+                displayResults(currentTab);
+                updateStats(resultMap);
 
             } catch (error) {
                 console.error('Fetch error:', error);
                 let errorMessage = `Failed to fetch URL: ${error.message}`;
 
-                if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-                    errorMessage += `\n\nNote: Due to browser security (CORS), some websites cannot be fetched directly. `;
-                    errorMessage += `Try:\n• News sites and blogs often work\n• Copy and paste the HTML source manually\n• Use browser extensions that allow CORS`;
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage += `\n\nThe Trek API is unreachable. If you are running the Playground standalone, set window.TREK_API_BASE or the <meta name="trek-api-base"> tag to point at a deployed Trek Worker. Otherwise paste HTML directly into the editor and click Extract.`;
                 }
 
                 showError(errorMessage);

@@ -1,0 +1,22 @@
+{
+  "name": "trek-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker that wraps Trek WASM and serves the Trek Playground",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run --outdir=dist",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "@officialunofficial/trek": "0.2.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250906.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

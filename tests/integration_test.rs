@@ -73,8 +73,10 @@ fn test_metadata_extraction() {
     let trek = Trek::new(TrekOptions::default());
     let result = trek.parse(html).unwrap();
 
-    assert_eq!(result.metadata.title, "Schema Title");
-    assert_eq!(result.metadata.author, "Schema Author");
+    // Defuddle-parity: og:title takes priority over schema headline (and
+    // <meta name="author"> takes priority over schema.org Person.name).
+    assert_eq!(result.metadata.title, "Open Graph Title");
+    assert_eq!(result.metadata.author, "Meta Author");
     assert_eq!(result.metadata.published, "2024-01-01");
     assert_eq!(result.metadata.image, "https://example.com/image.jpg");
     assert!(!result.metadata.schema_org_data.is_empty());

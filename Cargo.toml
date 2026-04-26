@@ -16,6 +16,15 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # HTML parsing
 lol_html = "1.2"
+kuchikiki = "0.8"
+# Pulled in transitively by kuchikiki — declared explicitly so we can name
+# `QualName` / `LocalName` / `ns!` when constructing replacement elements in
+# DOM passes. No new wheel-dep cost (already in the lockfile).
+html5ever = "0.26"
+
+# Async trait support — required so the `Fetcher` trait works as a
+# trait object across both native and wasm32 targets.
+async-trait = "0.1"
 
 # WASM support
 wasm-bindgen = "0.2"
@@ -34,7 +43,7 @@ js-sys = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 serde-wasm-bindgen = "0.6"
 
 # HTML utilities
@@ -56,9 +65,36 @@ url = "2.5.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Native-only HTTP fetcher used by the `fetcher-reqwest` feature.
+# This dependency is intentionally gated to non-wasm targets — wasm builds
+# get their fetcher from the host (Worker, browser) via a JS binding.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+
+[features]
+default = ["math-base"]
+# Enables a native (reqwest-backed) `Fetcher` impl for use in CLI / native
+# integration tests. Not wired into wasm builds — see the `Fetcher` trait
+# docs in `src/extractor.rs` for how the WASM host injects its own fetcher.
+fetcher-reqwest = ["dep:reqwest"]
+# Off by default: enables byte-for-byte markdown body comparison in
+# `tests/fixtures_test.rs`. Will fail until Trek emits Defuddle-equivalent
+# markdown — track-A keeps the metadata-only suite green in the meantime.
+markdown-fixtures = []
+# Track D math support: pure-Rust analyzers + raw-LaTeX wrapper. Pulls
+# annotations off MathML / KaTeX nodes and rewrites them to `<span data-math>`
+# so the markdown renderer emits `$…$` / `$$…$$`. ON by default — pure
+# code, no extra deps. Future tiers (`math-mathml-to-latex`,
+# `math-latex-to-mathml`, `math-full`) tracked separately.
+math-base = []
+# Print per-pass node-count deltas for the kuchikiki DOM pipeline.
+# Off by default; enable with `cargo build --features tracing-passes`.
+tracing-passes = []
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+pretty_assertions = "1.4"
+walkdir = "2.5"
+regex = "1.10"
 
 [profile.release]
 opt-level = "z"
