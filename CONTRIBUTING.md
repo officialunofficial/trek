@@ -34,16 +34,21 @@ Please note that this project is released with a Contributor Code of Conduct. By
 - Node.js (for npm publishing and scripts)
 - Python 3 (for development server)
 - wasm-pack (for WebAssembly builds)
+- `just` (optional) - a `justfile` mirrors every `make` recipe under the
+  same name. Install via [just.systems](https://just.systems/), or run
+  `make` recipes instead if you prefer not to install it.
 
 ### Installing Development Dependencies
 
 ```bash
 make install-dev-deps
+# or: just install-dev-deps
 ```
 
 This installs:
 - cargo-outdated
 - cargo-audit
+- cargo-deny
 - cargo-tarpaulin
 - git-cliff
 - wasm-pack
@@ -155,6 +160,8 @@ Pull request titles should follow the same format as commit messages.
 ## Development Workflow
 
 ### Common Commands
+
+Every command below also works as `just <recipe>` in place of `make <recipe>`.
 
 ```bash
 # Check if code compiles

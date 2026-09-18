@@ -8,6 +8,10 @@ Trek is a library for content extraction from the web. Trek is written in Rust a
 
 ## Essential Development Commands
 
+The commands below use `make`. A `justfile` mirrors every recipe under the
+same name — run `just <recipe>` instead of `make <recipe>` if you prefer
+`just`. `just --list` shows all recipes.
+
 ### Building
 ```bash
 # Check compilation
