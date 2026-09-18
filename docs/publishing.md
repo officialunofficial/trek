@@ -60,12 +60,12 @@ If you need to publish manually:
 
 2. **Dry run (recommended):**
    ```bash
-   make crates-publish-dry
+   just crates-publish-dry
    ```
 
 3. **Publish:**
    ```bash
-   make crates-publish
+   just crates-publish
    ```
 
 ### Publishing to npm:
@@ -77,17 +77,17 @@ If you need to publish manually:
 
 2. **Build the WASM package:**
    ```bash
-   make wasm-build
+   just wasm-build
    ```
 
 3. **Dry run (recommended):**
    ```bash
-   make npm-publish-dry
+   just npm-publish-dry
    ```
 
 4. **Publish:**
    ```bash
-   make npm-publish
+   just npm-publish
    ```
 
 ### Using GitHub Actions Manually:
@@ -133,7 +133,7 @@ For testing, you can publish pre-release versions:
 version = "0.2.0-beta.1"
 
 # Build and publish with beta tag
-make wasm-build
+just wasm-build
 cd pkg
 npm publish --tag beta --access public
 ```
@@ -172,8 +172,8 @@ If the WASM build fails:
 
 3. Clean and rebuild:
    ```bash
-   make clean
-   make wasm-build
+   just clean
+   just wasm-build
    ```
 
 ## Package Information

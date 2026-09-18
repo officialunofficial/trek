@@ -8,58 +8,56 @@ Trek is a library for content extraction from the web. Trek is written in Rust a
 
 ## Essential Development Commands
 
-The commands below use `make`. A `justfile` mirrors every recipe under the
-same name — run `just <recipe>` instead of `make <recipe>` if you prefer
-`just`. `just --list` shows all recipes.
+The commands below use `just`. Run `just --list` to see every recipe.
 
 ### Building
 ```bash
 # Check compilation
-make check
+just check
 
 # Build native (debug/release)
-make build
-make build-release
+just build
+just build-release
 
 # Build WebAssembly
-make wasm-build        # release build
-make wasm-build-debug  # debug build
+just wasm-build        # release build
+just wasm-build-debug  # debug build
 ```
 
 ### Testing
 ```bash
 # Run tests
-make test              # standard tests
-make test-verbose      # with output
-make wasm-test         # WebAssembly tests
-make bench             # benchmarks
+just test              # standard tests
+just test-verbose      # with output
+just wasm-test         # WebAssembly tests
+just bench             # benchmarks
 ```
 
 ### Code Quality
 ```bash
 # Format code
-make fmt
+just fmt
 
 # Run linter
-make clippy
+just clippy
 
 # Pre-commit checks (fmt, check, clippy, test)
-make pre-commit
+just pre-commit
 
 # Full CI checks
-make ci
+just ci
 ```
 
 ### Development Workflow
 ```bash
 # Install all dev dependencies (wasm-pack, cargo-tarpaulin, etc.)
-make install-dev-deps
+just install-dev-deps
 
 # Serve WASM test page at http://localhost:8000/test-wasm.html
-make serve
+just serve
 
 # Clean, build everything, run all checks
-make release
+just release
 ```
 
 ## Architecture Overview
@@ -101,11 +99,11 @@ trait Extractor {
 - **WASM builds**: Require special RUSTFLAGS: `--cfg getrandom_backend="js"`
 - **Strict linting**: Clippy pedantic and nursery lints enabled
 - **Size optimization**: Release builds use `opt-level = "z"` for minimal WASM size
-- **Development server**: `make serve` requires Python 3
+- **Development server**: `just serve` requires Python 3
 
 ## Testing Approach
 
 - Unit tests embedded in source files
 - Integration tests in `tests/` directory
 - Browser-based WASM testing via `test-wasm.html`
-- Always run `make pre-commit` before committing changes
+- Always run `just pre-commit` before committing changes

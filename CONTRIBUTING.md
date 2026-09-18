@@ -34,15 +34,12 @@ Please note that this project is released with a Contributor Code of Conduct. By
 - Node.js (for npm publishing and scripts)
 - Python 3 (for development server)
 - wasm-pack (for WebAssembly builds)
-- `just` (optional) - a `justfile` mirrors every `make` recipe under the
-  same name. Install via [just.systems](https://just.systems/), or run
-  `make` recipes instead if you prefer not to install it.
+- `just` - install via [just.systems](https://just.systems/)
 
 ### Installing Development Dependencies
 
 ```bash
-make install-dev-deps
-# or: just install-dev-deps
+just install-dev-deps
 ```
 
 This installs:
@@ -145,8 +142,8 @@ Use extract() with default options instead.
 
 ## Pull Request Process
 
-1. Ensure all tests pass: `make test`
-2. Run the pre-commit checks: `make pre-commit`
+1. Ensure all tests pass: `just test`
+2. Run the pre-commit checks: `just pre-commit`
 3. Update documentation if needed
 4. Update the CHANGELOG.md if your changes are user-facing
 5. Create a pull request with a clear title and description
@@ -161,32 +158,30 @@ Pull request titles should follow the same format as commit messages.
 
 ### Common Commands
 
-Every command below also works as `just <recipe>` in place of `make <recipe>`.
-
 ```bash
 # Check if code compiles
-make check
+just check
 
 # Run tests
-make test
+just test
 
 # Format code
-make fmt
+just fmt
 
 # Run linter
-make clippy
+just clippy
 
 # Run all pre-commit checks
-make pre-commit
+just pre-commit
 
 # Build WebAssembly module
-make wasm-build
+just wasm-build
 
 # Start development server
-make serve
+just serve
 
 # Generate changelog
-make changelog
+just changelog
 ```
 
 ### Before Committing
@@ -194,7 +189,7 @@ make changelog
 Always run the pre-commit checks:
 
 ```bash
-make pre-commit
+just pre-commit
 ```
 
 This does the following:
@@ -208,7 +203,7 @@ This does the following:
 Every dependency change must pass `cargo-deny` before it merges:
 
 ```bash
-make deny
+just deny
 ```
 
 This checks four things: security advisories, license compatibility, banned
@@ -227,16 +222,16 @@ For WASM-specific development:
 
 ```bash
 # Build WASM module
-make wasm-build
+just wasm-build
 
 # Build debug WASM module
-make wasm-build-debug
+just wasm-build-debug
 
 # Run WASM tests
-make wasm-test
+just wasm-test
 
 # Start playground server
-make playground
+just playground
 ```
 
 ## Testing Guidelines
@@ -257,16 +252,16 @@ make playground
 
 ```bash
 # Run all tests
-make test
+just test
 
 # Run tests with output
-make test-verbose
+just test-verbose
 
 # Run WASM tests
-make wasm-test
+just wasm-test
 
 # Generate coverage report
-make coverage
+just coverage
 ```
 
 ## Documentation
@@ -301,7 +296,7 @@ comments in `src/*.rs`. Follow these core rules:
 
 ```bash
 # Generate and open documentation
-make doc
+just doc
 ```
 
 ## Release Process
@@ -309,7 +304,7 @@ make doc
 Releases are managed by maintainers. The process involves:
 
 1. Update version in Cargo.toml
-2. Generate changelog: `make changelog`
+2. Generate changelog: `just changelog`
 3. Create a git tag: `git tag v0.x.x`
 4. Push tag to trigger release workflow
 

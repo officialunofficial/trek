@@ -65,7 +65,7 @@ cargo update --package trek
 
 # Build WASM to generate updated package.json
 echo -e "${YELLOW}Building WASM package...${NC}"
-make wasm-build
+just wasm-build
 
 # Verify package.json was updated
 PKG_VERSION=$(grep '"version"' pkg/package.json | cut -d'"' -f4)

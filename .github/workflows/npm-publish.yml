@@ -46,8 +46,11 @@ jobs:
         run: |
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- --version 0.15.0
 
+      - name: Install just
+        uses: extractions/setup-just@v4
+
       - name: Build WASM package
-        run: make wasm-build
+        run: just wasm-build
 
       - name: Configure npm
         run: |

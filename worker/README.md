@@ -54,8 +54,8 @@ npx wrangler deploy           # actual deploy (needs CF auth)
 npx wrangler deploy --dry-run --outdir=dist   # validate + bundle only
 ```
 
-The Makefile in the repo root also exposes `make worker-dev`,
-`make worker-deploy`, and `make worker-deploy-dry`.
+The justfile in the repo root also exposes `just worker-dev`,
+`just worker-deploy`, and `just worker-deploy-dry`.
 
 ## Bundle size
 

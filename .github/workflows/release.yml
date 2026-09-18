@@ -34,13 +34,16 @@ jobs:
         run: |
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- --version 0.15.0
 
+      - name: Install just
+        uses: extractions/setup-just@v4
+
       - name: Build release artifacts
         run: |
           # Build Rust release
           cargo build --release
           
           # Build WASM release
-          make wasm-build
+          just wasm-build
           
           # Create archives
           mkdir -p artifacts

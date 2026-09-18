@@ -72,7 +72,7 @@ Trek includes an interactive web playground for testing content extraction:
 
 ```bash
 # Build WASM and start the playground server
-make playground
+just playground
 
 # Open http://localhost:8000/playground/ in your browser
 ```
@@ -147,13 +147,13 @@ We welcome contributions! Trek uses conventional commits and automated changelog
 
 ```bash
 # Install development dependencies
-make install-dev-deps
+just install-dev-deps
 
 # Configure git for conventional commits
-make setup-git
+just setup-git
 
 # Run pre-commit checks
-make pre-commit
+just pre-commit
 ```
 
 ### Commit Message Format
