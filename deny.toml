@@ -1,0 +1,53 @@
+# cargo-deny configuration. See CONTRIBUTING.md for the rule that requires
+# this to pass before a dependency change merges.
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+# Checks the dependency graph for known security advisories (RustSec) and
+# for crates marked as unmaintained or yanked.
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+# Only allows licenses that Trek's own MIT license is compatible with.
+# Add a license here only after confirming it is permissive and compatible.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "0BSD",
+    "Unlicense",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+# Flags duplicate versions and lets us explicitly ban a crate (this is the
+# check that would have caught a dead single-maintainer fork like the old
+# kuchikiki dependency before it went stale).
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = [
+    # Example: { crate = "openssl", reason = "use rustls instead" },
+]
+skip = []
+skip-tree = []
+
+# Only allow crates from crates.io. Blocks a dependency pulled from an
+# arbitrary git URL or registry from entering the tree unnoticed.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

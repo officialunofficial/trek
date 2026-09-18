@@ -196,6 +196,24 @@ This does the following:
 3. Run clippy linter
 4. Run all tests
 
+### Adding or Updating a Dependency
+
+Every dependency change must pass `cargo-deny` before it merges:
+
+```bash
+make deny
+```
+
+This checks four things: security advisories, license compatibility, banned
+or duplicate crates, and dependency sources. CI runs the same check on every
+PR that touches `Cargo.toml`, `Cargo.lock`, or `deny.toml`. Configure the
+rules in `deny.toml`, at the repo root.
+
+Prefer a crate with an active maintainer over one with more features. Trek
+already replaced one single-maintainer dependency (`kuchikiki`) after it
+went unmaintained upstream — `cargo-deny`'s advisory check exists to catch
+the next one before it becomes a problem.
+
 ### WebAssembly Development
 
 For WASM-specific development:

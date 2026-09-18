@@ -152,6 +152,11 @@ audit: ## Run security audit
 	@echo "$(YELLOW)Running security audit...$(NC)"
 	$(CARGO) audit
 
+.PHONY: deny
+deny: ## Check licenses, advisories, bans, and sources with cargo-deny
+	@echo "$(YELLOW)Running cargo-deny...$(NC)"
+	$(CARGO) deny check
+
 .PHONY: coverage
 coverage: ## Generate test coverage report
 	@echo "$(YELLOW)Generating coverage report...$(NC)"
@@ -198,6 +203,7 @@ install-dev-deps: ## Install development dependencies
 	@echo "$(YELLOW)Installing development dependencies...$(NC)"
 	$(CARGO) install cargo-outdated
 	$(CARGO) install cargo-audit
+	$(CARGO) install cargo-deny
 	$(CARGO) install cargo-tarpaulin
 	$(CARGO) install git-cliff
 	$(CARGO) install wasm-pack --version 0.15.0 --locked
