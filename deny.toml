@@ -3,7 +3,9 @@
 # Reference: https://embarkstudios.github.io/cargo-deny/
 
 [graph]
-all-features = false
+# Check every optional feature too. The published crate exposes them,
+# so a consumer can enable any of them.
+all-features = true
 no-default-features = false
 
 [output]
@@ -29,6 +31,8 @@ allow = [
     "Zlib",
     "MPL-2.0",
     "Unicode-3.0",
+    "ISC",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 

@@ -74,7 +74,9 @@ impl Extractor for YoutubeExtractor {
         let mut content_html = String::new();
         // Embedded player.
         if !video_id.is_empty() {
-            content_html.push_str(&format!(
+            use std::fmt::Write as _;
+            let _ = write!(
+                content_html,
                 concat!(
                     r#"<iframe width="560" height="315" "#,
                     r#"src="https://www.youtube.com/embed/{}" "#,
@@ -85,7 +87,7 @@ impl Extractor for YoutubeExtractor {
                     r#"allowfullscreen></iframe>"#
                 ),
                 video_id
-            ));
+            );
         }
         // Description.
         if let Some(desc) = &description {
