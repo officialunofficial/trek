@@ -13,7 +13,7 @@ This guide explains how to publish Trek to both crates.io (Rust) and npm (WebAss
 
 ## Automated Publishing (Recommended)
 
-Trek uses GitHub Actions to automatically publish to both crates.io and npm when a new release is created. The release workflow will:
+Trek uses GitHub Actions to automatically publish to both crates.io and npm when a new release is created. The release workflow does the following:
 
 1. First publish to crates.io (Rust package)
 2. Then publish to npm (WebAssembly package)
@@ -41,9 +41,9 @@ Trek uses GitHub Actions to automatically publish to both crates.io and npm when
    - Click "Publish release"
 
 4. **Monitor the workflows:**
-   - The release workflow will trigger automatically
+   - The release workflow triggers automatically
    - Check [Actions tab](https://github.com/officialunofficial/trek/actions) for progress
-   - Packages will be available at:
+   - Packages are available at:
      - Rust: https://crates.io/crates/trek-rs
      - npm: https://www.npmjs.com/package/@officialunofficial/trek
 

@@ -10,13 +10,12 @@
 //! 3. Strip 1×1 tracking pixels (small explicit width/height OR a known
 //!    tracking-pixel substring in the URL).
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use super::util::{
     attr, descendants_elements, is_tag, new_element, remove_attr, select_all, set_attr,
     transfer_children,
 };
-use kuchikiki::traits::TendrilSink;
 
 /// Normalize images in `root`.
 pub fn normalize_images(root: &NodeRef) {
@@ -49,22 +48,24 @@ pub fn normalize_images(root: &NodeRef) {
 }
 
 /// HTML-string-level pass that promotes `<noscript><img ...></noscript>`
-/// content out of the noscript so it survives the lol_html clutter
-/// removal pass (which drops noscript wholesale). Operates on the raw
-/// HTML *before* clutter removal.
+/// content out of the noscript.
+///
+/// This lets the image survive the `lol_html` clutter removal pass (which
+/// drops noscript wholesale). Operates on the raw HTML *before* clutter
+/// removal.
 ///
 /// Strategy: regex-replace `<noscript>...<img.../>...</noscript>` with
 /// the contained `<img>` (preserving its attributes verbatim). If the
 /// noscript contains multiple imgs, all are promoted in order.
 #[must_use]
 pub fn promote_noscript_html(html: &str) -> String {
-    use once_cell::sync::Lazy;
     use regex::Regex;
-    static NOSCRIPT: Lazy<Regex> = Lazy::new(|| {
+    use std::sync::LazyLock;
+    static NOSCRIPT: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?is)<noscript[^>]*>(.*?)</noscript>").expect("noscript regex")
     });
-    static IMG: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?is)<img\b[^>]*/?>").expect("img regex"));
+    static IMG: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<img\b[^>]*/?>").expect("img regex"));
 
     NOSCRIPT
         .replace_all(html, |caps: &regex::Captures| {
@@ -93,8 +94,7 @@ fn promote_noscript_images(root: &NodeRef) {
             continue;
         }
         // Parse the inner HTML.
-        let inner_dom = kuchikiki::parse_html()
-            .one(format!("<html><body>{raw}</body></html>").as_str());
+        let inner_dom = crate::dom::parse_html(format!("<html><body>{raw}</body></html>").as_str());
         let inner_imgs: Vec<NodeRef> = inner_dom
             .descendants()
             .filter(|d| is_tag(d, "img"))
@@ -247,30 +247,25 @@ fn split_srcset_entries(s: &str) -> Vec<String> {
         if in_url {
             if c.is_whitespace() {
                 in_url = false;
-                cur.push(c);
-            } else {
-                cur.push(c);
             }
-        } else {
+        } else if c == ',' {
             // After we've seen whitespace post-URL, the next "," is a
             // candidate separator. Confirm it's followed by whitespace
             // or end-of-string before treating as a separator.
-            if c == ',' {
-                let next_is_ws = chars.get(i + 1).map(|c| c.is_whitespace()).unwrap_or(true);
-                if next_is_ws {
-                    out.push(cur.trim().to_string());
-                    cur.clear();
-                    in_url = true;
+            let next_is_ws = chars.get(i + 1).is_none_or(|c| c.is_whitespace());
+            if next_is_ws {
+                out.push(cur.trim().to_string());
+                cur.clear();
+                in_url = true;
+                i += 1;
+                // Skip the whitespace right after.
+                while i < chars.len() && chars[i].is_whitespace() {
                     i += 1;
-                    // Skip the whitespace right after.
-                    while i < chars.len() && chars[i].is_whitespace() {
-                        i += 1;
-                    }
-                    continue;
                 }
+                continue;
             }
-            cur.push(c);
         }
+        cur.push(c);
         i += 1;
     }
     if !cur.trim().is_empty() {
@@ -289,7 +284,13 @@ fn parse_descriptor_weight(d: &str) -> u64 {
     }
     if let Some(num) = d.strip_suffix('x') {
         let f: f64 = num.trim().parse().unwrap_or(0.0);
-        return (f * 1000.0) as u64;
+        // `x` descriptors (pixel density, e.g. "2x") are always
+        // non-negative in practice, and this value only ever feeds a
+        // relative ordering comparison, so truncating to whole
+        // milli-units loses no precision that matters here.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let weight = (f.max(0.0) * 1000.0) as u64;
+        return weight;
     }
     0
 }
@@ -302,23 +303,22 @@ pub fn extract_first_url_from_srcset(srcset: &str) -> Option<String> {
 }
 
 #[allow(dead_code)]
-fn _keep_imports(_n: &NodeRef) {
+const fn _keep_imports(_n: &NodeRef) {
     let _ = (descendants_elements, is_tag);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
         let mut buf = Vec::new();
-        node.serialize(&mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        node.serialize(&mut buf).expect("serialize node to buffer");
+        String::from_utf8(buf).expect("serialized HTML is valid UTF-8")
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
     fn srcset_tolerates_commas_in_url() {
         let s =
             "https://cdn.example/path,foo/img.png 800w, https://cdn.example/path,bar/img.png 1600w";
-        let best = pick_best_from_srcset(s).unwrap();
+        let best = pick_best_from_srcset(s).expect("srcset has a best entry");
         assert!(best.contains("path,bar"), "got: {best}");
     }
 

@@ -24,9 +24,9 @@
 //! Runs *early* so the selector-removal step doesn't strip `.alert` or
 //! `.admonition`.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use super::util::{
     attr, class_list, descendants_elements, has_class, is_tag, new_element, remove_attr,
@@ -46,10 +46,9 @@ pub fn normalize_callouts(root: &NodeRef) {
 /// Capitalize the first ASCII letter (UTF-8 safe).
 fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
-        None => String::new(),
-    }
+    chars.next().map_or_else(String::new, |first| {
+        first.to_ascii_uppercase().to_string() + chars.as_str()
+    })
 }
 
 /// Build the canonical callout shape from a body source. Children of
@@ -115,7 +114,7 @@ fn process_obsidian_collapsed(root: &NodeRef) {
         // hidden-element pass strips the body).
         if let Some(content) = select_first(&el, ".callout-content") {
             if let Some(style) = attr(&content, "style") {
-                static DISPLAY_NONE: Lazy<Regex> = Lazy::new(|| {
+                static DISPLAY_NONE: LazyLock<Regex> = LazyLock::new(|| {
                     Regex::new(r"(?i)display\s*:\s*none\s*;?").expect("display:none regex")
                 });
                 let cleaned = DISPLAY_NONE.replace_all(&style, "").trim().to_string();
@@ -140,9 +139,10 @@ fn process_github_alerts(root: &NodeRef) {
         let type_class = cls
             .iter()
             .find(|c| c.starts_with("markdown-alert-") && c.as_str() != "markdown-alert");
-        let callout_type = type_class
-            .map(|c| c.trim_start_matches("markdown-alert-").to_lowercase())
-            .unwrap_or_else(|| "note".to_string());
+        let callout_type = type_class.map_or_else(
+            || "note".to_string(),
+            |c| c.trim_start_matches("markdown-alert-").to_lowercase(),
+        );
         let title = capitalize(&callout_type);
 
         // Drop the icon/title element.
@@ -159,7 +159,7 @@ fn process_github_alerts(root: &NodeRef) {
 // 2b. GitHub blockquote alerts: <blockquote> whose first line is `[!NOTE]`
 // ---------------------------------------------------------------------------
 
-static GH_BLOCKQUOTE_RE: Lazy<Regex> = Lazy::new(|| {
+static GH_BLOCKQUOTE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*\[!\s*(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DANGER)\s*\]\s*(.*)$")
         .expect("github blockquote regex")
 });
@@ -205,7 +205,7 @@ fn strip_alert_marker(root: &NodeRef) {
         }
         if let Some(caps) = GH_BLOCKQUOTE_RE.captures(trimmed) {
             // Replace whole text node with the captured tail.
-            let tail = caps.get(2).map(|m| m.as_str()).unwrap_or("").trim_start();
+            let tail = caps.get(2).map_or("", |m| m.as_str()).trim_start();
             let mut new_val = String::new();
             // Preserve leading whitespace of the original.
             let leading: String = raw.chars().take_while(|c| c.is_whitespace()).collect();
@@ -353,29 +353,27 @@ fn process_bootstrap_alerts(root: &NodeRef) {
 
 // Suppress unused-import warning when no descendants_elements call survives a refactor.
 #[allow(dead_code)]
-fn _keep_imports(_n: &NodeRef) {
+const fn _keep_imports(_n: &NodeRef) {
     let _ = descendants_elements;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
         let mut buf = Vec::new();
-        node.serialize(&mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        node.serialize(&mut buf).expect("serialize node to buffer");
+        String::from_utf8(buf).expect("serialized HTML is valid UTF-8")
     }
 
     #[test]
     fn github_alert_blockquote_is_normalized() {
-        let html =
-            r#"<html><body><blockquote><p>[!WARNING] heads up</p></blockquote></body></html>"#;
+        let html = r"<html><body><blockquote><p>[!WARNING] heads up</p></blockquote></body></html>";
         let root = parse(html);
         normalize_callouts(&root);
         let out = serialize(&root);

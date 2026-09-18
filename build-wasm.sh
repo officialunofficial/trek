@@ -22,7 +22,7 @@ fi
 
 # Build for web target with proper WASM configuration
 echo "Building WASM module..."
-RUSTFLAGS='--cfg getrandom_backend="js"' wasm-pack build --target web --out-dir pkg --release --no-opt
+RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web --out-dir pkg --release --no-opt
 
 # Restore config if it was backed up
 if [ -f ".cargo/config.toml.bak" ]; then

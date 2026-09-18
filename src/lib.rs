@@ -1,8 +1,8 @@
-//! Trek - A modern web content extraction library
+//! Trek is a library for content extraction from the web.
 //!
-//! Trek removes clutter from web pages and extracts clean, readable content.
-//! It's designed as a modern alternative to Mozilla Readability with enhanced
-//! features like mobile-aware extraction and consistent HTML standardization.
+//! Trek removes clutter from web pages. Trek returns clean, readable content.
+//! Trek offers a modern alternative to Mozilla Readability. Trek adds
+//! mobile-aware extraction and consistent HTML standardization.
 
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![allow(
@@ -13,11 +13,25 @@
     clippy::missing_panics_doc
 )]
 
-use eyre::Result;
 use lol_html::{RewriteStrSettings, element, rewrite_str, text};
+use regex::Regex;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::LazyLock;
 use tracing::{debug, info, instrument};
+
+/// Matches `<pre>...</pre>` regions, stashed before clutter removal so
+/// structural markup inside code blocks (Prism `<span class="token
+/// blockquote">` and friends) doesn't get caught by partial-selector
+/// matching.
+static PRE_STASH_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<pre[^>]*>.*?</pre>").expect("pre regex"));
+
+/// Matches content between `<!--REMOVE-->` / `<!--/REMOVE-->` markers
+/// (including newlines), used to strip clutter marked for removal.
+static REMOVE_MARKER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)<!--REMOVE-->.*?<!--/REMOVE-->").expect("remove regex"));
 
 pub mod constants;
 pub mod content_boundary;
@@ -39,9 +53,14 @@ pub mod utils;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+pub use crate::error::TrekError;
 use crate::extractor::{ExtractCtx, ExtractorRegistry, RecursionDepth};
 use crate::metadata::MetadataExtractor;
 pub use crate::types::{MetaTagItem, TrekOptions, TrekResponse};
+
+/// Convenience alias used throughout this module. The public error type is
+/// [`TrekError`] — see [`Trek::parse`].
+type Result<T> = std::result::Result<T, TrekError>;
 
 /// Main Trek struct for content extraction
 #[derive(Debug)]
@@ -63,7 +82,25 @@ impl Trek {
         }
     }
 
-    /// Parse HTML content and extract the main content
+    /// Build a Trek instance for internal reuse where the site-extractor
+    /// registry is never consulted, such as the low-word-count retry
+    /// path in [`Self::parse_with_recursion`], which calls
+    /// [`Self::parse_internal`] directly. `parse_internal` never reads
+    /// `extractor_registry`, so this skips the work
+    /// [`ExtractorRegistry::with_defaults`] does to build every
+    /// site-specific extractor.
+    const fn new_for_retry(options: TrekOptions) -> Self {
+        Self {
+            options,
+            extractor_registry: ExtractorRegistry::new(),
+        }
+    }
+
+    /// Parse HTML content and extract the main content.
+    ///
+    /// Returns [`TrekError`] on failure, so callers can match on the
+    /// failure kind (e.g. malformed HTML vs. a recursion-limit trip)
+    /// instead of inspecting an opaque error message.
     #[instrument(skip(self, html))]
     pub fn parse(&self, html: &str) -> Result<TrekResponse> {
         self.parse_with_recursion(html, RecursionDepth::new())
@@ -74,11 +111,13 @@ impl Trek {
     /// embedded quote-tweet, or `_conversation` rendering a synthesized
     /// thread).
     ///
-    /// Site extractors call this when they need Trek's standardize / clutter
-    /// removal / metadata merge to run over content they synthesised
-    /// themselves. The supplied [`RecursionDepth`] is the *parent's* counter
-    /// — `parse_html_internal` will call `enter()` on it and refuse to
-    /// recurse past `RecursionDepth::DEFAULT_MAX`.
+    /// Site extractors call this method. They call it when they need Trek's
+    /// standardize, clutter removal, and metadata merge to run over content
+    /// they synthesised themselves.
+    ///
+    /// The supplied [`RecursionDepth`] is the parent's counter.
+    /// `parse_html_internal` calls `enter()` on it. `parse_html_internal`
+    /// refuses to recurse past `RecursionDepth::DEFAULT_MAX`.
     ///
     /// Marked `pub` so site extractors in `src/extractors/*.rs` can reach
     /// it; not part of the stable public API.
@@ -88,7 +127,7 @@ impl Trek {
         html: &str,
         parent_depth: RecursionDepth,
     ) -> Result<TrekResponse> {
-        let depth = parent_depth.enter().map_err(|e| eyre::eyre!(e))?;
+        let depth = parent_depth.enter()?;
         self.parse_with_recursion(html, depth)
     }
 
@@ -109,88 +148,10 @@ impl Trek {
             .with_debug(self.options.debug)
             .with_recursion(recursion);
 
-        if let Some(extractor) = self.extractor_registry.select(&ctx) {
-            info!("Using site-specific extractor: {}", extractor.name());
-
-            // Parse the HTML once into a kuchikiki tree so the extractor
-            // can navigate it without re-parsing.
-            let root = {
-                use kuchikiki::traits::TendrilSink;
-                kuchikiki::parse_html().one(html)
-            };
-
-            match extractor.extract(&ctx, &root) {
-                Ok(extracted) => {
-                    #[allow(clippy::redundant_clone)]
-                    let mut final_metadata = metadata.clone();
-                    // Per the spec: None means "fall back to generic
-                    // metadata". Only override when the extractor actually
-                    // produced a value.
-                    if let Some(title) = extracted.title {
-                        final_metadata.title = title;
-                    }
-                    if let Some(author) = extracted.author {
-                        final_metadata.author = author;
-                    }
-                    if let Some(published) = extracted.published {
-                        final_metadata.published = published;
-                    }
-                    if let Some(site) = extracted.site {
-                        final_metadata.site = site;
-                    }
-                    if let Some(description) = extracted.description {
-                        final_metadata.description = description;
-                    }
-                    if !extracted.schema_overrides.is_empty() {
-                        final_metadata
-                            .schema_org_data
-                            .extend(extracted.schema_overrides);
-                    }
-
-                    let content = extracted.content_html;
-                    final_metadata.word_count = utils::count_words(&content);
-                    final_metadata.parse_time = utils::current_time_ms() - start_time;
-
-                    let content_markdown =
-                        if self.options.output.markdown || self.options.output.separate_markdown {
-                            Some(markdown::html_to_markdown_with(
-                                &content,
-                                &final_metadata.title,
-                                self.options.url.as_deref(),
-                            ))
-                        } else {
-                            None
-                        };
-                    let response_content = if self.options.output.markdown {
-                        content_markdown.clone().unwrap_or_default()
-                    } else {
-                        content
-                    };
-                    let response_markdown = if self.options.output.separate_markdown {
-                        content_markdown
-                    } else {
-                        None
-                    };
-
-                    return Ok(TrekResponse {
-                        content: response_content,
-                        content_markdown: response_markdown,
-                        extractor_type: Some(extractor.name().to_string()),
-                        meta_tags: collected_data.meta_tags.clone(),
-                        metadata: final_metadata,
-                    });
-                }
-                Err(e) => {
-                    // Site extractor matched but couldn't produce content
-                    // (e.g. JSON shape changed). Fall through to generic
-                    // extraction rather than failing the whole parse.
-                    debug!(
-                        "extractor `{}` failed: {}; falling back to generic",
-                        extractor.name(),
-                        e
-                    );
-                }
-            }
+        if let Some(response) =
+            self.try_site_extractor(html, &ctx, &metadata, &collected_data.meta_tags, start_time)
+        {
+            return Ok(response);
         }
 
         // Fall back to generic extraction
@@ -208,7 +169,7 @@ impl Trek {
             retry_options.removal.remove_exact_selectors = false;
             retry_options.removal.remove_partial_selectors = false;
 
-            let retry_trek = Self::new(retry_options);
+            let retry_trek = Self::new_for_retry(retry_options);
             let retry_metadata = MetadataExtractor::extract_from_collected_data(
                 &collected_data,
                 self.options.url.as_deref(),
@@ -229,7 +190,9 @@ impl Trek {
                 // destroyed the article body.
                 let cleaned_count = result.metadata.word_count;
                 let retry_count = retry_result.metadata.word_count;
-                if retry_count > cleaned_count * 2 || (cleaned_count < 30 && retry_count > cleaned_count) {
+                if retry_count > cleaned_count * 2
+                    || (cleaned_count < 30 && retry_count > cleaned_count)
+                {
                     debug!("Retry produced more content");
                     return Ok(retry_result);
                 }
@@ -237,6 +200,100 @@ impl Trek {
         }
 
         Ok(result)
+    }
+
+    /// Run the selected site-specific extractor, if any, and turn its
+    /// output into a finished [`TrekResponse`].
+    ///
+    /// Returns `None` when no extractor matched `ctx`, or when the matched
+    /// extractor failed to produce content (e.g. the site's JSON shape
+    /// changed) — either way the caller falls back to generic extraction.
+    fn try_site_extractor(
+        &self,
+        html: &str,
+        ctx: &ExtractCtx<'_>,
+        metadata: &types::TrekMetadata,
+        meta_tags: &[MetaTagItem],
+        start_time: u64,
+    ) -> Option<TrekResponse> {
+        let extractor = self.extractor_registry.select(ctx)?;
+        info!("Using site-specific extractor: {}", extractor.name());
+
+        // Parse the HTML once into a DOM tree so the extractor can
+        // navigate it without re-parsing.
+        let root = crate::dom::parse_html(html);
+
+        let extracted = match extractor.extract(ctx, &root) {
+            Ok(extracted) => extracted,
+            Err(e) => {
+                // Site extractor matched but couldn't produce content
+                // (e.g. JSON shape changed). Fall through to generic
+                // extraction rather than failing the whole parse.
+                debug!(
+                    "extractor `{}` failed: {}; falling back to generic",
+                    extractor.name(),
+                    e
+                );
+                return None;
+            }
+        };
+
+        let mut final_metadata = metadata.clone();
+        // Per the spec: None means "fall back to generic metadata". Only
+        // override when the extractor actually produced a value.
+        if let Some(title) = extracted.title {
+            final_metadata.title = title;
+        }
+        if let Some(author) = extracted.author {
+            final_metadata.author = author;
+        }
+        if let Some(published) = extracted.published {
+            final_metadata.published = published;
+        }
+        if let Some(site) = extracted.site {
+            final_metadata.site = site;
+        }
+        if let Some(description) = extracted.description {
+            final_metadata.description = description;
+        }
+        if !extracted.schema_overrides.is_empty() {
+            final_metadata
+                .schema_org_data
+                .extend(extracted.schema_overrides);
+        }
+
+        let content = extracted.content_html;
+        final_metadata.word_count = utils::count_words(&content);
+        final_metadata.parse_time = utils::current_time_ms() - start_time;
+
+        let content_markdown =
+            if self.options.output.markdown || self.options.output.separate_markdown {
+                Some(markdown::html_to_markdown_with(
+                    &content,
+                    &final_metadata.title,
+                    self.options.url.as_deref(),
+                ))
+            } else {
+                None
+            };
+        let response_content = if self.options.output.markdown {
+            content_markdown.clone().unwrap_or_default()
+        } else {
+            content
+        };
+        let response_markdown = if self.options.output.separate_markdown {
+            content_markdown
+        } else {
+            None
+        };
+
+        Some(TrekResponse {
+            content: response_content,
+            content_markdown: response_markdown,
+            extractor_type: Some(extractor.name().to_string()),
+            meta_tags: meta_tags.to_vec(),
+            metadata: final_metadata,
+        })
     }
 
     fn parse_internal(
@@ -249,10 +306,8 @@ impl Trek {
         if std::env::var("TREK_DEBUG_PATTERNS").is_ok() {
             eprintln!("[parse_internal] entered");
         }
-        // Find and extract main content
-        let main_content = self.extract_main_content(html);
-
         // Extract just the body content first
+        let main_content = html.to_string();
         let body_content = self.extract_body_content(&main_content);
 
         // Promote `<noscript>` content (e.g. lazy-load placeholders) so
@@ -277,13 +332,12 @@ impl Trek {
         // `data-callout` but happily unwraps `<div class="alert alert-info">`
         // and `<div class="admonition note">`, which would erase the kind
         // information we need to emit `> [!info]` markdown. Running the
-        // kuchikiki callout normalizer here rewrites every supported source
+        // DOM-based callout normalizer here rewrites every supported source
         // (Obsidian, GitHub alerts, Hugo/Docsy admonitions, Bootstrap alerts,
         // aside callouts) into the canonical `data-callout` shape that
         // survives standardize.
         let cleaned_content = {
-            use kuchikiki::traits::TendrilSink;
-            let root = kuchikiki::parse_html().one(cleaned_content.as_str());
+            let root = crate::dom::parse_html(cleaned_content.as_str());
             elements::callouts::normalize_callouts(&root);
             dom::serialize(&root)
         };
@@ -293,10 +347,10 @@ impl Trek {
             standardize::standardize_content(&cleaned_content, &metadata.title, self.options.debug);
 
         // TRACK-D: element normalization
-        // Run kuchikiki-based DOM passes. Track D wires the element
-        // normalizer here so callouts/math/code/headings/footnotes/images
-        // are rewritten before markdown rendering. With no passes the
-        // call is a no-op.
+        // Run the DOM-based passes. Track D wires the element normalizer
+        // here so callouts/math/code/headings/footnotes/images are
+        // rewritten before markdown rendering. With no passes the call
+        // is a no-op.
         let final_content = self.run_dom_passes(&standardized);
 
         let mut final_metadata = metadata.clone();
@@ -341,11 +395,11 @@ impl Trek {
         })
     }
 
-    /// Run the kuchikiki-based DOM pass chain against `html`.
+    /// Run the DOM-based pass chain against `html`.
     ///
-    /// Combined Track-C (kuchikiki standardize/removals) + Track-D
+    /// Combined Track-C (DOM-based standardize/removals) + Track-D
     /// (element normalization) DOM pass chain.
-    /// Order: removals::pre → standardize → elements::normalize_all → removals::post.
+    /// Order: `removals::pre` → standardize → `elements::normalize_all` → `removals::post`.
     /// Skipped when `html` is empty.
     fn run_dom_passes(&self, html: &str) -> String {
         if std::env::var("TREK_DEBUG_PATTERNS").is_ok() {
@@ -354,8 +408,7 @@ impl Trek {
         if html.trim().is_empty() {
             return html.to_string();
         }
-        use kuchikiki::traits::TendrilSink;
-        let root = kuchikiki::parse_html().one(html);
+        let root = crate::dom::parse_html(html);
         let ctx = dom::DomCtx::new(self.options.url.as_deref(), self.options.debug);
 
         // Pre-removal passes (selectors / hidden) — only when removal is enabled.
@@ -386,30 +439,35 @@ impl Trek {
         dom::serialize(&root)
     }
 
+    // lol_html's default `RewriteStrSettings` uses `LocalHandlerTypes`
+    // (non-`Send` closures), so there is no cross-thread handoff to
+    // guard against here — `Rc<RefCell<_>>` is enough, and it drops the
+    // panic risk `Mutex::lock().expect(...)` carried. The remaining
+    // allow below covers `element!`/`text!` macro-internal unwraps only.
     #[allow(clippy::disallowed_methods, clippy::unused_self)] // lol_html macros use unwrap internally
     fn collect_initial_data(&self, html: &str) -> Result<CollectedData> {
-        let collected_data = Arc::new(Mutex::new(CollectedData::default()));
-        let data_clone = Arc::clone(&collected_data);
-        let data_clone2 = Arc::clone(&collected_data);
+        let collected_data = Rc::new(RefCell::new(CollectedData::default()));
+        let data_clone = Rc::clone(&collected_data);
+        let data_clone2 = Rc::clone(&collected_data);
 
         // For script content, we need to track state
-        let script_content = Arc::new(Mutex::new(String::new()));
-        let script_clone = Arc::clone(&script_content);
+        let script_content = Rc::new(RefCell::new(String::new()));
+        let script_clone = Rc::clone(&script_content);
 
         // For title content, we need to track state
-        let title_content = Arc::new(Mutex::new(String::new()));
-        let title_clone = Arc::clone(&title_content);
-        let data_clone3 = Arc::clone(&collected_data);
+        let title_content = Rc::new(RefCell::new(String::new()));
+        let title_clone = Rc::clone(&title_content);
+        let data_clone3 = Rc::clone(&collected_data);
 
-        let data_clone4 = Arc::clone(&collected_data);
-        let data_clone5 = Arc::clone(&collected_data);
+        let data_clone4 = Rc::clone(&collected_data);
+        let data_clone5 = Rc::clone(&collected_data);
 
-        let settings = RewriteStrSettings {
-            element_content_handlers: vec![
+        let settings = RewriteStrSettings::new()
+            .append_element_content_handler(
                 // Collect meta tags
                 element!("meta[name], meta[property]", move |el| {
                     if let Some(content) = el.get_attribute("content") {
-                        let mut data = data_clone.lock().expect("Failed to acquire lock");
+                        let mut data = data_clone.borrow_mut();
 
                         // Decode HTML entities
                         let decoded_content = utils::decode_html_entities(&content);
@@ -427,20 +485,24 @@ impl Trek {
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Collect canonical URL
                 element!("link[rel=canonical]", move |el| {
                     if let Some(href) = el.get_attribute("href") {
-                        let mut data = data_clone5.lock().expect("Failed to acquire lock");
+                        let mut data = data_clone5.borrow_mut();
                         if data.canonical.is_none() {
                             data.canonical = Some(href);
                         }
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Collect favicon
                 element!("link[rel~=icon], link[rel~=shortcut]", move |el| {
                     if let Some(href) = el.get_attribute("href") {
-                        let mut data = data_clone4.lock().expect("Failed to acquire lock");
+                        let mut data = data_clone4.borrow_mut();
                         // Prefer icon over shortcut icon
                         if data.favicon.is_none()
                             || el.get_attribute("rel").as_deref() == Some("icon")
@@ -450,113 +512,85 @@ impl Trek {
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Collect title tag
                 element!("title", move |_el| {
                     // Clear the content buffer for this title
                     {
-                        let mut content = title_clone.lock().expect("Failed to acquire lock");
+                        let mut content = title_clone.borrow_mut();
                         content.clear();
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Collect text within title tag
                 text!("title", move |t| {
-                    {
-                        let mut content = title_content.lock().expect("Failed to acquire lock");
-                        content.push_str(t.as_str());
-
-                        // Check if this is the last chunk
-                        if t.last_in_text_node() {
-                            let title_str = content.trim().to_string();
-                            drop(content); // Explicitly drop before acquiring next lock
-                            let mut data = data_clone3.lock().expect("Failed to acquire lock");
-                            data.title = Some(title_str);
-                        }
-                    }
-                    Ok(())
+                    collect_title_text(t, &title_content, &data_clone3)
                 }),
+            )
+            .append_element_content_handler(
                 // Collect schema.org data
                 element!(r#"script[type="application/ld+json"]"#, move |_el| {
                     // Clear the content buffer for this script
                     {
-                        let mut content = script_clone.lock().expect("Failed to acquire lock");
+                        let mut content = script_clone.borrow_mut();
                         content.clear();
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Collect text within script tags
                 text!(r#"script[type="application/ld+json"]"#, move |t| {
-                    {
-                        let mut content = script_content.lock().expect("Failed to acquire lock");
-                        content.push_str(t.as_str());
-
-                        // Check if this is the last chunk
-                        if t.last_in_text_node() {
-                            // Parse the complete JSON
-                            if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
-                                drop(content); // Drop before acquiring next lock
-                                let mut data = data_clone2.lock().expect("Failed to acquire lock");
-                                if let Some(graph) =
-                                    json_data.get("@graph").and_then(Value::as_array)
-                                {
-                                    data.schema_org_data.extend(graph.clone());
-                                } else {
-                                    data.schema_org_data.push(json_data);
-                                }
-                            }
-                        }
-                    }
-                    Ok(())
+                    collect_schema_text(t, &script_content, &data_clone2)
                 }),
-            ],
-            ..RewriteStrSettings::default()
-        };
+            );
 
         rewrite_str(html, settings)?;
 
-        let data = Arc::try_unwrap(collected_data).map_or_else(
-            |arc| arc.lock().expect("Failed to acquire lock").clone(),
-            |mutex| mutex.into_inner().expect("Failed to get inner value"),
-        );
+        let data = Rc::try_unwrap(collected_data)
+            .map_or_else(|rc| rc.borrow().clone(), RefCell::into_inner);
 
         Ok(data)
     }
 
-    #[allow(clippy::unused_self, clippy::disallowed_methods)] // lol_html macros use unwrap internally
-    fn extract_main_content(&self, html: &str) -> String {
-        // For now, just return the HTML as-is
-        // The actual content identification happens through the remove_clutter phase
-        html.to_string()
-    }
-
     #[allow(clippy::unused_self)]
     fn extract_body_content(&self, html: &str) -> String {
-        // Extract just the content inside the body tag
-        if let Some(body_start) = html.find("<body") {
-            if let Some(tag_end) = html[body_start..].find('>') {
-                let content_start = body_start + tag_end + 1;
-                if let Some(body_end) = html.rfind("</body>") {
-                    let content = html[content_start..body_end].trim();
-                    // Remove leading newlines
-                    return content.trim_start_matches('\n').to_string();
-                }
-            }
-        }
+        // Extract just the content inside the body tag. Any missing
+        // piece (no `<body`, no closing `>` for it, or no `</body>`)
+        // falls through to the as-is case.
+        let Some(body_start) = html.find("<body") else {
+            return html.trim_start_matches('\n').to_string();
+        };
+        let Some(tag_end) = html[body_start..].find('>') else {
+            return html.trim_start_matches('\n').to_string();
+        };
+        let content_start = body_start + tag_end + 1;
+        let Some(body_end) = html.rfind("</body>") else {
+            return html.trim_start_matches('\n').to_string();
+        };
 
-        // If no body tags found, return as-is
-        html.trim_start_matches('\n').to_string()
+        // Remove leading newlines
+        let content = html[content_start..body_end].trim();
+        content.trim_start_matches('\n').to_string()
     }
 
+    // See the note on `collect_initial_data`: `Rc<RefCell<_>>` is enough
+    // here too, since `RewriteStrSettings::new()` never requires `Send`
+    // closures. The remaining allow below covers the `element!`
+    // macro-internal unwrap only.
     #[allow(clippy::disallowed_methods)] // lol_html macros use unwrap internally
     fn extract_first_image_from_content(html: &str) -> Option<String> {
         use lol_html::{RewriteStrSettings, element, rewrite_str};
 
-        let first_image = Arc::new(Mutex::new(None::<String>));
-        let image_clone = Arc::clone(&first_image);
+        let first_image = Rc::new(RefCell::new(None::<String>));
+        let image_clone = Rc::clone(&first_image);
 
-        let settings = RewriteStrSettings {
-            element_content_handlers: vec![element!("img", move |el| {
-                let mut image_guard = image_clone.lock().expect("Failed to acquire lock");
+        let settings =
+            RewriteStrSettings::new().append_element_content_handler(element!("img", move |el| {
+                let mut image_guard = image_clone.borrow_mut();
 
                 // Skip if we already found an image
                 if image_guard.is_some() {
@@ -586,29 +620,21 @@ impl Trek {
                 drop(image_guard);
 
                 Ok(())
-            })],
-            ..RewriteStrSettings::default()
-        };
+            }));
 
         // Process the HTML
         let _ = rewrite_str(html, settings).ok()?;
 
         // Extract the result
-        match Arc::try_unwrap(first_image) {
-            Ok(mutex) => mutex.into_inner().expect("Failed to get inner value"),
-            Err(arc) => {
-                let guard = arc.lock().expect("Failed to acquire lock");
-                guard.clone()
-            }
-        }
+        Rc::try_unwrap(first_image).map_or_else(|rc| rc.borrow().clone(), RefCell::into_inner)
     }
 
-    #[allow(clippy::unused_self, clippy::disallowed_methods)] // lol_html macros use unwrap internally
+    #[allow(clippy::unused_self)]
     /// Match a class/id/data-* attribute value against `PARTIAL_SELECTORS`.
-    /// For `class`, splits on whitespace and skips Tailwind arbitrary
-    /// variants (`[&_.foo]:hidden`) so substring matches against tokens
-    /// like `newsletter-fallback-image` don't accidentally remove the
-    /// outer wrapper.
+    /// For `class`, this splits the value on whitespace. It skips Tailwind
+    /// arbitrary variants (`[&_.foo]:hidden`). This step stops a substring
+    /// match against a token like `newsletter-fallback-image` from
+    /// removing the outer wrapper by mistake.
     fn value_matches_partial(value: &str, attr: &str) -> bool {
         use crate::constants::PARTIAL_SELECTORS;
         if attr == "class" {
@@ -633,6 +659,7 @@ impl Trek {
         }
     }
 
+    #[allow(clippy::disallowed_methods)] // lol_html macros use unwrap internally
     fn remove_clutter(&self, html: &str) -> Result<String> {
         use crate::constants::{PARTIAL_SELECTORS, TEST_ATTRIBUTES};
         use lol_html::html_content::ContentType;
@@ -641,9 +668,8 @@ impl Trek {
         // Stash <pre>...</pre> regions before clutter removal so structural
         // markup inside code blocks (Prism `<span class="token blockquote">`
         // and friends) doesn't get caught by partial-selector matching.
-        let pre_re = regex::Regex::new(r"(?is)<pre[^>]*>.*?</pre>").expect("pre regex");
         let mut stashed: Vec<String> = Vec::new();
-        let masked = pre_re
+        let masked = PRE_STASH_REGEX
             .replace_all(html, |caps: &regex::Captures| {
                 let placeholder = format!("\u{0001}TREK_PRE_{}\u{0001}", stashed.len());
                 stashed.push(caps[0].to_string());
@@ -657,8 +683,8 @@ impl Trek {
         let remove_partial = self.options.removal.remove_partial_selectors;
 
         // Use comments to mark content for removal
-        let settings = RewriteStrSettings {
-            element_content_handlers: vec![
+        let settings = RewriteStrSettings::new()
+            .append_element_content_handler(
                 // Remove common non-content elements by tag name
                 element!(
                     "script, style, nav, footer, header, aside, noscript",
@@ -671,6 +697,8 @@ impl Trek {
                         Ok(())
                     }
                 ),
+            )
+            .append_element_content_handler(
                 // Strip generic <svg> chrome (logos, icon sprites) but keep
                 // SVGs that look like real content — i.e. those with
                 // role="img", an aria-label, or a <title> sibling indicating
@@ -678,8 +706,8 @@ impl Trek {
                 //
                 // Note: lol_html selectors don't support :has(), so we test
                 // the SVG's own attributes here. Title-based detection would
-                // need a kuchikiki pass; for now role/aria-label is enough
-                // for >90% of cases per the spec.
+                // need a DOM pass; for now role/aria-label is enough for
+                // >90% of cases per the spec.
                 element!("svg", move |el| {
                     if !remove_exact {
                         return Ok(());
@@ -696,6 +724,8 @@ impl Trek {
                     }
                     Ok(())
                 }),
+            )
+            .append_element_content_handler(
                 // Remove elements matching class/id selectors
                 element!(
                     "div, section, article, main, span, p, ul, ol, li, h1, h2, h3, h4, h5, h6",
@@ -721,17 +751,15 @@ impl Trek {
                             // removals of legit `<h2 id="appendix-…">`
                             // section headings.
                             let tag = el.tag_name();
-                            let is_heading = matches!(
-                                tag.as_str(),
-                                "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-                            );
+                            let is_heading =
+                                matches!(tag.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
                             // Check each test attribute for partial matches
                             for attr in TEST_ATTRIBUTES {
                                 if is_heading && *attr != "class" {
                                     continue;
                                 }
                                 if let Some(value) = el.get_attribute(attr) {
-                                    if Self::value_matches_partial(&value, *attr) {
+                                    if Self::value_matches_partial(&value, attr) {
                                         should_remove = true;
                                     }
                                 }
@@ -750,15 +778,12 @@ impl Trek {
                         Ok(())
                     }
                 ),
-            ],
-            ..RewriteStrSettings::default()
-        };
+            );
 
         let result = rewrite_str(html, settings)?;
 
         // Second pass: Remove content between REMOVE markers (including newlines)
-        let remove_pattern = regex::Regex::new(r"(?s)<!--REMOVE-->.*?<!--/REMOVE-->").unwrap();
-        let mut cleaned = remove_pattern.replace_all(&result, "").to_string();
+        let mut cleaned = REMOVE_MARKER_REGEX.replace_all(&result, "").to_string();
 
         // Restore stashed <pre> regions.
         for (idx, original) in stashed.iter().enumerate() {
@@ -767,6 +792,60 @@ impl Trek {
         }
         Ok(cleaned)
     }
+}
+
+/// Accumulate `<title>` text chunks and, on the last chunk, store the
+/// trimmed title on `data`. Used by the `text!` handler in
+/// [`Trek::collect_initial_data`].
+// Always returns `Ok`, but the `text!` macro's handler bound is
+// `FnMut(&mut TextChunk) -> HandlerResult`, so the `Result` return type is
+// required by lol_html's API, not optional here.
+#[allow(clippy::unnecessary_wraps)]
+fn collect_title_text(
+    t: &lol_html::html_content::TextChunk<'_>,
+    title_content: &Rc<RefCell<String>>,
+    data: &Rc<RefCell<CollectedData>>,
+) -> lol_html::HandlerResult {
+    let mut content = title_content.borrow_mut();
+    content.push_str(t.as_str());
+
+    // Check if this is the last chunk
+    if t.last_in_text_node() {
+        let title_str = content.trim().to_string();
+        drop(content); // Explicitly drop before the next borrow
+        data.borrow_mut().title = Some(title_str);
+    }
+    Ok(())
+}
+
+/// Accumulate `<script type="application/ld+json">` text chunks and, on the
+/// last chunk, parse the JSON and merge it into `data`. Used by the `text!`
+/// handler in [`Trek::collect_initial_data`].
+// See `collect_title_text`: the `Result` return type is mandated by
+// lol_html's `text!` handler bound, not optional here.
+#[allow(clippy::unnecessary_wraps)]
+fn collect_schema_text(
+    t: &lol_html::html_content::TextChunk<'_>,
+    script_content: &Rc<RefCell<String>>,
+    data: &Rc<RefCell<CollectedData>>,
+) -> lol_html::HandlerResult {
+    let mut content = script_content.borrow_mut();
+    content.push_str(t.as_str());
+
+    // Check if this is the last chunk
+    if t.last_in_text_node() {
+        // Parse the complete JSON
+        if let Ok(json_data) = serde_json::from_str::<Value>(&content) {
+            drop(content); // Drop before the next borrow
+            let mut data = data.borrow_mut();
+            if let Some(graph) = json_data.get("@graph").and_then(Value::as_array) {
+                data.schema_org_data.extend(graph.clone());
+            } else {
+                data.schema_org_data.push(json_data);
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -791,6 +870,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)]
     fn test_fallback_image_extraction() {
         let trek = Trek::new(TrekOptions::default());
 
@@ -822,6 +902,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)]
     fn test_no_fallback_when_og_image_exists() {
         let trek = Trek::new(TrekOptions::default());
 
@@ -849,6 +930,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)]
     fn test_no_suitable_images() {
         let trek = Trek::new(TrekOptions::default());
 
@@ -910,7 +992,7 @@ mod tests {
             ..Default::default()
         });
 
-        let html = r#"
+        let html = r"
             <html>
                 <body>
                     <main>
@@ -920,7 +1002,7 @@ mod tests {
                     </main>
                 </body>
             </html>
-        "#;
+        ";
 
         let result = trek.parse(html).unwrap();
         println!("Debug - Content: {}", result.content);
@@ -935,7 +1017,7 @@ mod tests {
     fn test_remove_clutter() {
         let trek = Trek::new(TrekOptions::default());
 
-        let html = r#"
+        let html = r"
             <html>
                 <body>
                     <nav>Navigation</nav>
@@ -943,7 +1025,7 @@ mod tests {
                     <footer>Footer</footer>
                 </body>
             </html>
-        "#;
+        ";
 
         let result = trek.remove_clutter(html).unwrap();
         println!("After clutter removal: {result}");
@@ -1086,7 +1168,7 @@ mod tests {
     fn test_whitespace_handling_in_extraction() {
         let trek = Trek::new(TrekOptions::default());
 
-        let html = r#"
+        let html = r"
             <html>
                 <head>
                     <title>Test Article</title>
@@ -1104,7 +1186,7 @@ mod tests {
                     </article>
                 </body>
             </html>
-        "#;
+        ";
 
         let result = trek.parse(html).unwrap();
         println!("Whitespace test result:\n{}", result.content);
@@ -1144,7 +1226,7 @@ mod tests {
     fn test_div_flattening_reduces_newlines() {
         let trek = Trek::new(TrekOptions::default());
 
-        let html = r#"
+        let html = r"
             <html>
                 <head>
                     <title>Test Article</title>
@@ -1164,7 +1246,7 @@ mod tests {
                     </div>
                 </body>
             </html>
-        "#;
+        ";
 
         let result = trek.parse(html).unwrap();
         println!("Div flattening result:\n{}", result.content);

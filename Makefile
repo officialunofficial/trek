@@ -8,7 +8,7 @@
 CARGO := cargo
 WASM_PACK := wasm-pack
 PYTHON := python3
-RUSTFLAGS_WASM := --cfg getrandom_backend="js"
+RUSTFLAGS_WASM := --cfg getrandom_backend="wasm_js"
 
 # Colors for output
 RED := \033[0;31m
@@ -200,7 +200,7 @@ install-dev-deps: ## Install development dependencies
 	$(CARGO) install cargo-audit
 	$(CARGO) install cargo-tarpaulin
 	$(CARGO) install git-cliff
-	$(CARGO) install wasm-pack
+	$(CARGO) install wasm-pack --version 0.15.0 --locked
 	@echo "$(GREEN)Development dependencies installed!$(NC)"
 
 .PHONY: setup-git

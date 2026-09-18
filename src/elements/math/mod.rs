@@ -2,7 +2,7 @@
 //!
 //! Three tiers are planned:
 //! * `math-base` (default ON) — pure-Rust analyzers + raw-LaTeX wrapper.
-//!   Pulls annotations off MathML / KaTeX and rewrites to `<span data-math>`.
+//!   Pulls annotations off `MathML` / `KaTeX` and rewrites to `<span data-math>`.
 //! * `math-mathml-to-latex` (future) — adds MathML→LaTeX conversion.
 //! * `math-full` (future) — `math-base` + both converters.
 //!

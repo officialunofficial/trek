@@ -1,11 +1,11 @@
 //! Apply Trek's selector lists (constants.rs) as real removal rules.
 //!
-//! The lol_html-based pre-pass already does coarse class-name removal.
+//! The `lol_html`-based pre-pass already does coarse class-name removal.
 //! This pass picks up the long tail: `id`, `data-testid`, `data-component`
-//! etc. that lol_html cannot easily target, plus partial-attribute matches
+//! etc. that `lol_html` cannot easily target, plus partial-attribute matches
 //! against `PARTIAL_SELECTORS`.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::constants::{PARTIAL_SELECTORS, TEST_ATTRIBUTES};
 use crate::dom::walk::{closest_tag, is_any_tag};
@@ -58,9 +58,10 @@ fn class_token_matches_partial(value: &str, attr: &str) -> bool {
         let tokens: Vec<&str> = value.split_whitespace().collect();
         // If token list contains a "show" pseudo (e.g. `sm:flex`) skip
         // matching the bare `hidden`/`invisible`.
-        let has_responsive_show = tokens
-            .iter()
-            .any(|t| t.contains(':') && (t.ends_with(":flex") || t.ends_with(":block") || t.ends_with(":inline")));
+        let has_responsive_show = tokens.iter().any(|t| {
+            t.contains(':')
+                && (t.ends_with(":flex") || t.ends_with(":block") || t.ends_with(":inline"))
+        });
         // Skip Tailwind arbitrary variants (`[&_.foo]:hidden`) — those are
         // descendant-conditional and never an indication that *this*
         // element is chrome.

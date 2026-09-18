@@ -4,6 +4,6 @@ fn main() {
         .unwrap_or_default()
         .contains("wasm32")
     {
-        println!("cargo:rustc-cfg=getrandom_backend=\"js\"");
+        println!("cargo:rustc-cfg=getrandom_backend=\"wasm_js\"");
     }
 }

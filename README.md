@@ -4,9 +4,9 @@
 
 [![Crates.io](https://img.shields.io/crates/v/trek-rs.svg)](https://crates.io/crates/trek-rs) [![npm](https://img.shields.io/npm/v/@officialunofficial/trek.svg)](https://www.npmjs.com/package/@officialunofficial/trek)
 
-A modern web content extraction library written in Rust, compiled to WebAssembly.
+Trek is a library for content extraction from the web. Trek is written in Rust. Trek compiles to WebAssembly.
 
-Trek removes clutter from web pages and extracts clean, readable content. It's designed as a modern alternative to Mozilla Readability with enhanced features like mobile-aware extraction and consistent HTML standardization.
+Trek removes clutter from web pages and extracts clean, readable content. Trek is a modern alternative to Mozilla Readability. It adds mobile-aware extraction. It also adds consistent HTML standardization.
 
 ## Features
 

@@ -1,7 +1,7 @@
 //! Constants used throughout Trek
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 /// Mobile viewport width for style evaluation
 pub const MOBILE_WIDTH: u32 = 600;
@@ -858,7 +858,7 @@ pub const ALLOWED_ATTRIBUTES: &[&str] = &[
 pub const ALLOWED_ATTRIBUTES_DEBUG: &[&str] = &["class", "id"];
 
 /// Lazy regex for combined partial selectors
-pub static PARTIAL_SELECTORS_REGEX: Lazy<Regex> = Lazy::new(|| {
+pub static PARTIAL_SELECTORS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     let pattern = PARTIAL_SELECTORS.join("|");
     Regex::new(&pattern).expect("Failed to compile partial selectors regex")
 });

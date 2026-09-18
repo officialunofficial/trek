@@ -81,9 +81,9 @@ pub fn escape_table_cell(s: &str) -> String {
 
 /// Decode HTML entities in attribute values / text fragments.
 ///
-/// kuchikiki returns text content with entities already decoded, so this is
-/// only used for attribute strings that we're going to embed back in Markdown
-/// output.
+/// The DOM engine returns text content with entities already decoded, so
+/// this is only used for attribute strings that we're going to embed back
+/// in Markdown output.
 #[must_use]
 pub fn decode_entities(s: &str) -> String {
     html_escape::decode_html_entities(s).into_owned()

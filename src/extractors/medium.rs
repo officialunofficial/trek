@@ -6,7 +6,7 @@
 //! strips Medium UI chrome, and emits the cleaned article HTML.
 // AGENT-P2C: Phase 2C knowledge extractor.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
@@ -69,16 +69,12 @@ impl Extractor for MediumExtractor {
         if site_name != "Medium" {
             // Could still be a Medium-hosted custom domain (al:android:app_name).
             let app_name = meta_property(root, "al:android:app_name").unwrap_or_default();
-            let is_metered = article
-                .as_element()
-                .map(|el| {
-                    el.attributes
-                        .borrow()
-                        .get("class")
-                        .map(|c| c.contains("meteredContent"))
-                        .unwrap_or(false)
-                })
-                .unwrap_or(false);
+            let is_metered = article.as_element().is_some_and(|el| {
+                el.attributes
+                    .borrow()
+                    .get("class")
+                    .is_some_and(|c| c.contains("meteredContent"))
+            });
             if !is_metered && app_name != "Medium" {
                 return Err(ExtractError::Failed {
                     name: "medium",

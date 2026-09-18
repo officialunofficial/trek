@@ -8,7 +8,7 @@
 //! 3. Collapse adjacent identical-text headings (e.g. duplicate `<h1>` +
 //!    `<h2>` page-title pattern).
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use super::util::{attr, has_class, is_tag, select_all};
 
@@ -114,14 +114,10 @@ fn collapse_adjacent_duplicates(root: &NodeRef) {
             sib = s.next_sibling();
         }
         let Some(next) = sib else { continue };
-        if !next
-            .as_element()
-            .map(|e| {
-                let n = e.name.local.to_string().to_ascii_lowercase();
-                matches!(n.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
-            })
-            .unwrap_or(false)
-        {
+        if !next.as_element().is_some_and(|e| {
+            let n = e.name.local.to_string().to_ascii_lowercase();
+            matches!(n.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
+        }) {
             continue;
         }
         let a = norm(&h.text_contents());
@@ -144,12 +140,12 @@ fn norm(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
@@ -181,7 +177,7 @@ mod tests {
 
     #[test]
     fn adjacent_duplicates_collapse() {
-        let html = r#"<html><body><h1>Hello</h1><h1>Hello</h1><p>x</p></body></html>"#;
+        let html = r"<html><body><h1>Hello</h1><h1>Hello</h1><p>x</p></body></html>";
         let root = parse(html);
         normalize_headings(&root);
         let out = serialize(&root);

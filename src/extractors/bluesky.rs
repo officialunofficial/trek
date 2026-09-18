@@ -7,17 +7,17 @@
 // (depth 0) or replies whose connector-line styling encodes their
 // nesting depth.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
     Extractor, render_conversation,
 };
 
-static BSKY_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^https?://(?:www\.)?bsky\.app/").expect("valid regex"));
+static BSKY_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^https?://(?:www\.)?bsky\.app/").expect("valid regex"));
 
 /// Bluesky extractor.
 pub struct BlueskyExtractor;
@@ -181,10 +181,9 @@ impl ConversationExtractor for BlueskyExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! the trailing `– Wikipedia` suffix).
 // AGENT-P2C: Phase 2C knowledge extractor.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{find_first, host_matches_suffix, remove_all, serialize_children};

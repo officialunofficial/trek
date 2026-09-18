@@ -5,7 +5,7 @@
 //! * Flatten `<picture>` to its primary `<img>`, choosing `src` from
 //!   `<source srcset>` when missing.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::walk::{element_children, get_attr, is_any_tag};
 use crate::dom::{DomCtx, DomPass};
@@ -108,11 +108,10 @@ impl DomPass for FigureImage {
                 }
                 // Move the img out and replace picture.
                 pic.insert_before(img_node.clone());
-                pic.detach();
-            } else {
-                // No img? Drop the empty picture.
-                pic.detach();
             }
+            // Either the img was hoisted above, or there was no img and
+            // the empty picture is simply dropped.
+            pic.detach();
         }
     }
 }

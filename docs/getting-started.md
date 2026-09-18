@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you set up your development environment for working with Trek.
+This guide helps you set up your development environment for Trek.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ cd trek
 make install-dev-deps
 ```
 
-This will install:
+This installs:
 - `wasm-pack`: For building WebAssembly packages
 - `cargo-tarpaulin`: For code coverage
 - `cargo-watch`: For development auto-reload
@@ -63,7 +63,7 @@ make wasm-build
 make wasm-build-debug
 ```
 
-The WebAssembly build outputs will be in the `pkg/` directory.
+The WebAssembly build puts its output in the `pkg/` directory.
 
 ## Development Workflow
 

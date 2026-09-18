@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Trek is a modern web content extraction library written in Rust that compiles to WebAssembly. It's designed as an alternative to Mozilla Readability with enhanced mobile-awareness and site-specific extraction capabilities.
+Trek is a library for content extraction from the web. Trek is written in Rust and compiles to WebAssembly. It's designed as an alternative to Mozilla Readability with enhanced mobile-awareness and site-specific extraction capabilities.
 
 ## Essential Development Commands
 
@@ -60,7 +60,7 @@ make release
 
 ## Architecture Overview
 
-Trek uses a multi-stage content extraction pipeline with the following key components:
+Trek extracts content through a pipeline with several stages. The pipeline has these key components:
 
 ### Core Structure
 - **`src/lib.rs`**: Main `Trek` struct that orchestrates extraction

@@ -9,13 +9,13 @@
 //! 2. Strip Chroma `<table class="lntable">` line-number gutters → keep the
 //!    code column.
 //! 3. Strip Pygments `<td class="lineno">` cells.
-//! 4. Strip ChatGPT CodeMirror `.cm-gutter` columns; coalesce `.cm-line` /
+//! 4. Strip `ChatGPT` `CodeMirror` `.cm-gutter` columns; coalesce `.cm-line` /
 //!    `[data-line]` (Shiki/rehype-pretty-code) lines.
 //! 5. Strip `button.copy`, `[aria-label="Copy"]`.
 //! 6. Output canonical `<pre><code class="language-X">…</code></pre>`.
 
-use kuchikiki::NodeRef;
-use kuchikiki::iter::NodeIterator;
+use crate::dom::engine::NodeRef;
+use crate::dom::engine::traits::NodeIterator;
 
 use super::util::{
     attr, class_list, descendants_elements, has_class, new_element, remove_attr, select_all,
@@ -45,11 +45,11 @@ pub fn normalize_code_blocks(root: &NodeRef) {
 fn strip_copy_buttons(root: &NodeRef) {
     // Buttons / icons explicitly marked as copy controls.
     let selectors = [
-        r#"button.copy"#,
+        r"button.copy",
         r#"button[aria-label="Copy"]"#,
         r#"button[aria-label="Copy code"]"#,
         r#"button[class*="codeblock-button"]"#,
-        r#"button[data-copy]"#,
+        r"button[data-copy]",
         r#"[aria-label="Copy"]"#,
         r#"[class*="copy-button"]"#,
     ];
@@ -142,7 +142,7 @@ fn is_canonical_pre_code(node: &NodeRef, lang: &str) -> bool {
     }
     let mut found = false;
     for child in node.children() {
-        if !child.as_element().is_some() {
+        if child.as_element().is_none() {
             continue;
         }
         if found {
@@ -187,7 +187,7 @@ pub fn detect_language(node: &NodeRef) -> String {
     // Parent or sibling header text (e.g. hljs-header).
     if let Some(parent) = node.parent() {
         for child in parent.children() {
-            if !child.as_element().is_some() {
+            if child.as_element().is_none() {
                 continue;
             }
             // Don't consume the code block itself.
@@ -288,15 +288,13 @@ fn coalesce_line_spans(node: &NodeRef) {
     // We replace the parent element children with a single text node; this is
     // safe when the lines are direct siblings under one container.
     // Find a common parent (use the first match's parent).
-    let parent = match lines[0].parent() {
-        Some(p) => p,
-        None => return,
+    let Some(parent) = lines[0].parent() else {
+        return;
     };
     // Verify all lines share the same parent — if not, bail.
     for l in &lines {
         if l.parent()
-            .map(|p| !std::rc::Rc::ptr_eq(&p.0, &parent.0))
-            .unwrap_or(true)
+            .is_none_or(|p| !std::rc::Rc::ptr_eq(&p.0, &parent.0))
         {
             return;
         }
@@ -329,14 +327,11 @@ fn clean_code_text(s: &str) -> String {
     while out.contains("\n\n\n") {
         out = out.replace("\n\n\n", "\n\n");
     }
-    let trimmed = out
-        .trim_end_matches(|c: char| c == '\n' || c == ' ')
-        .to_string();
-    trimmed
+    out.trim_end_matches(['\n', ' ']).to_string()
 }
 
 #[allow(dead_code)]
-fn _keep_imports(_n: &NodeRef) {
+const fn _keep_imports(_n: &NodeRef) {
     let _ = (
         descendants_elements,
         set_attr,
@@ -348,16 +343,15 @@ fn _keep_imports(_n: &NodeRef) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
         let mut buf = Vec::new();
-        node.serialize(&mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        node.serialize(&mut buf).expect("serialize node");
+        String::from_utf8(buf).expect("serialized output is valid utf8")
     }
 
     #[test]
@@ -379,7 +373,7 @@ mod tests {
 
     #[test]
     fn shiki_data_line_coalesces() {
-        let html = r#"<pre><code><span data-line>line one</span><span data-line>line two</span></code></pre>"#;
+        let html = r"<pre><code><span data-line>line one</span><span data-line>line two</span></code></pre>";
         let root = parse(html);
         normalize_code_blocks(&root);
         let out = serialize(&root);
@@ -388,7 +382,7 @@ mod tests {
 
     #[test]
     fn chroma_lntable_is_stripped() {
-        let html = r##"<html><body><div class="highlight"><div class="chroma"><table class="lntable"><tbody><tr><td class="lntd"><pre class="chroma"><code><span class="lnt">1</span><span class="lnt">2</span></code></pre></td><td class="lntd"><pre class="chroma"><code class="language-cpp" data-lang="cpp">int x;</code></pre></td></tr></tbody></table></div></div></body></html>"##;
+        let html = r#"<html><body><div class="highlight"><div class="chroma"><table class="lntable"><tbody><tr><td class="lntd"><pre class="chroma"><code><span class="lnt">1</span><span class="lnt">2</span></code></pre></td><td class="lntd"><pre class="chroma"><code class="language-cpp" data-lang="cpp">int x;</code></pre></td></tr></tbody></table></div></div></body></html>"#;
         let root = parse(html);
         normalize_code_blocks(&root);
         let out = serialize(&root);

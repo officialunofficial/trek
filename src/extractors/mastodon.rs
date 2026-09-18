@@ -8,7 +8,7 @@
 // When detected, we look for `.detailed-status__wrapper` (OP) and
 // `.status__wrapper` siblings (replies / thread continuation).
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
@@ -73,7 +73,7 @@ impl MastodonExtractor {
     fn site_name(root: &NodeRef) -> Option<String> {
         let m = root.select_first(r#"meta[property="og:site_name"]"#).ok()?;
         let attrs = m.attributes.borrow();
-        attrs.get("content").map(|s| s.to_string())
+        attrs.get("content").map(std::string::ToString::to_string)
     }
 
     fn post_text(post: &NodeRef) -> String {
@@ -106,10 +106,7 @@ impl Extractor for MastodonExtractor {
         // circuit later extractors, so use a URL hint as a cheap pre-filter.
         if let Some(u) = ctx.url {
             // Path pattern: `/@user/<id>`.
-            if regex::Regex::new(r"/@[^/]+/\d+")
-                .map(|re| re.is_match(u))
-                .unwrap_or(false)
-            {
+            if regex::Regex::new(r"/@[^/]+/\d+").is_ok_and(|re| re.is_match(u)) {
                 return true;
             }
         }
@@ -243,10 +240,9 @@ impl ConversationExtractor for MastodonExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

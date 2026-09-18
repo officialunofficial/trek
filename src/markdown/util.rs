@@ -1,6 +1,6 @@
 //! Shared helpers used by the Markdown converter.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 /// Get an attribute value from an element node, or `None` if the node is not
 /// an element or the attribute is missing.

@@ -2,7 +2,7 @@
 //!
 //! Score blocks below a threshold (low text + many links) and remove them.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::constants::NAVIGATION_INDICATORS;
 use crate::dom::walk::{
@@ -19,19 +19,25 @@ fn score_block(node: &NodeRef) -> i32 {
     if txt_len == 0 {
         return -50;
     }
-    let words = count_words(&txt) as i32;
+    let words = i32::try_from(count_words(&txt)).unwrap_or(i32::MAX);
     let mut score = words / 5;
 
     // Boost for paragraph children.
-    let paragraphs = element_children(node)
-        .iter()
-        .filter(|c| is_any_tag(c, &["p"]))
-        .count() as i32;
+    let paragraphs = i32::try_from(
+        element_children(node)
+            .iter()
+            .filter(|c| is_any_tag(c, &["p"]))
+            .count(),
+    )
+    .unwrap_or(i32::MAX);
     score += paragraphs * 5;
 
     // Penalty: link density.
-    let link_len = link_text_length(node) as i32;
-    let density = link_len as f64 / txt_len.max(1) as f64;
+    let link_len = i32::try_from(link_text_length(node)).unwrap_or(i32::MAX);
+    // Text lengths stay far below the point where `usize` -> `f64` would
+    // lose precision, so the conversion is safe in practice.
+    #[allow(clippy::cast_precision_loss)]
+    let density = f64::from(link_len) / txt_len.max(1) as f64;
     if density > 0.6 {
         score -= 25;
     }

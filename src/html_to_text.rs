@@ -6,13 +6,13 @@ use std::sync::{Arc, Mutex};
 /// Remove script, style, and noscript elements from HTML
 #[allow(clippy::disallowed_methods)] // lol_html macros use unwrap internally
 fn remove_skip_elements(html: &str) -> String {
-    let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("script, style, noscript", |el| {
+    let settings = RewriteStrSettings::new().append_element_content_handler(element!(
+        "script, style, noscript",
+        |el| {
             el.remove();
             Ok(())
-        })],
-        ..RewriteStrSettings::default()
-    };
+        }
+    ));
 
     rewrite_str(html, settings).unwrap_or_else(|_| html.to_string())
 }
@@ -31,8 +31,8 @@ pub fn html_to_text(html: &str) -> String {
     let text_clone5 = Arc::clone(&text_content);
     let text_clone6 = Arc::clone(&text_content);
 
-    let settings = RewriteStrSettings {
-        element_content_handlers: vec![
+    let settings = RewriteStrSettings::new()
+        .append_element_content_handler(
             // Handle line breaks
             element!("br", move |_el| {
                 let mut text = text_clone.lock().unwrap();
@@ -40,6 +40,8 @@ pub fn html_to_text(html: &str) -> String {
                 drop(text);
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Handle paragraphs and divs - add newlines
             element!("p, div, article, section, blockquote", move |el| {
                 let mut text = text_clone2.lock().unwrap();
@@ -52,6 +54,8 @@ pub fn html_to_text(html: &str) -> String {
                 el.after("\n", lol_html::html_content::ContentType::Text);
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Handle headings - add newlines
             element!("h1, h2, h3, h4, h5, h6", move |el| {
                 let mut text = text_clone3.lock().unwrap();
@@ -64,6 +68,8 @@ pub fn html_to_text(html: &str) -> String {
                 el.after("\n\n", lol_html::html_content::ContentType::Text);
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Handle list items
             element!("li", move |el| {
                 let mut text = text_clone4.lock().unwrap();
@@ -76,22 +82,28 @@ pub fn html_to_text(html: &str) -> String {
                 el.after("\n", lol_html::html_content::ContentType::Text);
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Handle images - add alt text if available
             element!("img", move |el| {
                 if let Some(alt) = el.get_attribute("alt") {
-                    if !alt.trim().is_empty() {
+                    let alt = alt.trim();
+                    if !alt.is_empty() {
                         use std::fmt::Write;
-                        let mut text = text_clone6.lock().unwrap();
-                        let _ = write!(text, " [Image: {}] ", alt.trim());
+                        let _ = write!(text_clone6.lock().unwrap(), " [Image: {alt}] ");
                     }
                 }
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Handle horizontal rules
             element!("hr", move |el| {
                 el.replace("\n---\n", lol_html::html_content::ContentType::Text);
                 Ok(())
             }),
+        )
+        .append_element_content_handler(
             // Collect text content from all other elements
             text!("*", move |t| {
                 let content = t.as_str();
@@ -102,9 +114,7 @@ pub fn html_to_text(html: &str) -> String {
                 }
                 Ok(())
             }),
-        ],
-        ..RewriteStrSettings::default()
-    };
+        );
 
     let _ = rewrite_str(&cleaned_html, settings);
 

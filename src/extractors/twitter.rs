@@ -7,11 +7,11 @@
 // the registry's shared `render_conversation` helper produces the final
 // HTML.
 
-use kuchikiki::iter::NodeIterator;
+use crate::dom::engine::traits::NodeIterator;
 
-use kuchikiki::{ElementData, NodeRef};
-use once_cell::sync::Lazy;
+use crate::dom::engine::{ElementData, NodeRef};
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
@@ -20,13 +20,13 @@ use crate::extractor::{
 
 /// AGENT-P2B: status URL pattern excluding `/i/article/` (claimed by
 /// `XArticleExtractor`).
-static TWITTER_STATUS_URL: Lazy<Regex> = Lazy::new(|| {
+static TWITTER_STATUS_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^https?://(?:www\.|mobile\.)?(?:x|twitter)\.com/[A-Za-z0-9_]{1,15}/status/\d+")
         .expect("valid regex")
 });
 
 /// AGENT-P2B: also matches the Article URL form so we can explicitly skip it.
-static TWITTER_ARTICLE_URL: Lazy<Regex> = Lazy::new(|| {
+static TWITTER_ARTICLE_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)^https?://(?:www\.|mobile\.)?(?:x|twitter)\.com/(?:[A-Za-z0-9_]{1,15}|i)/article/\d+",
     )
@@ -100,7 +100,7 @@ impl TwitterExtractor {
             .as_node()
             .descendants()
             .elements()
-            .filter(|el: &kuchikiki::NodeDataRef<ElementData>| &*el.name.local == "a")
+            .filter(|el: &crate::dom::engine::NodeDataRef<ElementData>| &*el.name.local == "a")
             .collect();
         anchors
             .get(1)
@@ -234,10 +234,9 @@ impl ConversationExtractor for TwitterExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

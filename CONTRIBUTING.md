@@ -41,7 +41,7 @@ Please note that this project is released with a Contributor Code of Conduct. By
 make install-dev-deps
 ```
 
-This will install:
+This installs:
 - cargo-outdated
 - cargo-audit
 - cargo-tarpaulin
@@ -190,7 +190,7 @@ Always run the pre-commit checks:
 make pre-commit
 ```
 
-This will:
+This does the following:
 1. Format your code
 2. Check compilation
 3. Run clippy linter
@@ -245,6 +245,20 @@ make coverage
 ```
 
 ## Documentation
+
+### Documentation Style
+
+All written documentation and code comments in this repo follow
+[ASD-STE100](https://www.asd-ste100.org/) (Simplified Technical English).
+This rule covers README.md, the `docs/` directory, CLAUDE.md, and rustdoc
+comments in `src/*.rs`. Follow these core rules:
+
+- Keep sentences under 20 words.
+- Put one idea in each sentence.
+- Use active voice. Name the actor.
+- Use present tense.
+- Use one term per concept. Do not switch between synonyms.
+- Do not use noun strings over three words.
 
 ### Code Documentation
 

@@ -1,4 +1,4 @@
-//! kuchikiki-based standardize passes.
+//! DOM-based standardize passes.
 //!
 //! Each submodule implements a single Defuddle-equivalent transformation as
 //! a `DomPass`. The orchestration glue lives in `crate::lib::run_dom_passes`.
@@ -49,7 +49,7 @@ pub fn default_passes() -> Vec<Box<dyn DomPass>> {
 }
 
 /// Run all standardize DOM passes in order against `root`.
-pub fn run_all(root: &kuchikiki::NodeRef, ctx: &DomCtx) {
+pub fn run_all(root: &crate::dom::engine::NodeRef, ctx: &DomCtx) {
     for p in default_passes() {
         #[cfg(feature = "tracing-passes")]
         let before = root.descendants().count();

@@ -11,7 +11,9 @@
 //! HN uses 40px per indent level, so depth = N / 40.
 // AGENT-P2C: Phase 2C news extractor.
 
-use kuchikiki::NodeRef;
+use std::fmt::Write as _;
+
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
@@ -45,9 +47,7 @@ enum PageKind {
 }
 
 fn classify(root: &NodeRef) -> PageKind {
-    let main_post = find_first(root, ".fatitem");
-    if main_post.is_some() {
-        let post = main_post.unwrap();
+    if let Some(post) = find_first(root, ".fatitem") {
         // Comment page = .fatitem with .onstory link and no .titleline
         let has_on_story = find_first_in(&post, ".onstory").is_some();
         let has_title = find_first_in(&post, ".titleline").is_some();
@@ -87,7 +87,7 @@ impl Extractor for HackerNewsExtractor {
         }
 
         match kind {
-            PageKind::Listing => extract_listing(root),
+            PageKind::Listing => Ok(extract_listing(root)),
             PageKind::Story => extract_story(root, ctx),
             PageKind::Comment => extract_comment_page(root, ctx),
             PageKind::None => unreachable!(),
@@ -95,82 +95,84 @@ impl Extractor for HackerNewsExtractor {
     }
 }
 
-fn extract_listing(root: &NodeRef) -> Result<ExtractedContent, ExtractError> {
-    let mut items = String::new();
-    let stories = select_all(root, "tr.athing");
-    for row in &stories {
-        let title_el = match find_first_in(row, ".titleline a") {
-            Some(t) => t,
-            None => continue,
-        };
-        let title = elem_text(&title_el);
-        let url = elem_attr(&title_el, "href").unwrap_or_default();
-        let site_str = find_first_in(row, ".sitestr")
-            .map(|s| elem_text(&s))
-            .unwrap_or_default();
-        let id = elem_attr(row, "id").unwrap_or_default();
+/// Build one `<li>` entry for a listing row. Returns `None` when the row has
+/// no title link, which happens for malformed or non-story rows.
+fn build_listing_item(row: &NodeRef) -> Option<String> {
+    let title_el = find_first_in(row, ".titleline a")?;
+    let title = elem_text(&title_el);
+    let url = elem_attr(&title_el, "href").unwrap_or_default();
+    let site_str = find_first_in(row, ".sitestr")
+        .map(|s| elem_text(&s))
+        .unwrap_or_default();
+    let id = elem_attr(row, "id").unwrap_or_default();
 
-        // The subtext row is the next-sibling tr (next element sibling).
-        let subrow = next_element_sibling(row);
-        let score = subrow
-            .as_ref()
-            .and_then(|s| find_first_in(s, ".score"))
-            .map(|s| elem_text(&s))
-            .unwrap_or_default();
-        let author = subrow
-            .as_ref()
-            .and_then(|s| find_first_in(s, ".hnuser"))
-            .map(|s| elem_text(&s))
-            .unwrap_or_default();
-        let comments_text = subrow
-            .as_ref()
-            .map(|s| {
-                let links = select_all(s, "td.subtext a");
-                links
-                    .last()
-                    .map(|l| elem_text(l).replace('\u{a0}', " "))
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        let comments = if comments_text.contains("comment") {
-            comments_text
-        } else {
-            String::new()
-        };
-        let comments_url = if id.is_empty() {
-            String::new()
-        } else {
-            format!("https://news.ycombinator.com/item?id={id}")
-        };
+    // The subtext row is the next-sibling tr (next element sibling).
+    let subrow = next_element_sibling(row);
+    let score = subrow
+        .as_ref()
+        .and_then(|s| find_first_in(s, ".score"))
+        .map(|s| elem_text(&s))
+        .unwrap_or_default();
+    let author = subrow
+        .as_ref()
+        .and_then(|s| find_first_in(s, ".hnuser"))
+        .map(|s| elem_text(&s))
+        .unwrap_or_default();
+    let comments_text = subrow
+        .as_ref()
+        .map(|s| {
+            let links = select_all(s, "td.subtext a");
+            links
+                .last()
+                .map(|l| elem_text(l).replace('\u{a0}', " "))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    let comments = if comments_text.contains("comment") {
+        comments_text
+    } else {
+        String::new()
+    };
+    let comments_url = if id.is_empty() {
+        String::new()
+    } else {
+        format!("https://news.ycombinator.com/item?id={id}")
+    };
 
-        items.push_str("<li>");
-        items.push_str(&format!(
-            r#"<a href="{}">{}</a>"#,
-            escape_attr(&url),
-            escape_html(&title)
-        ));
-        if !site_str.is_empty() {
-            items.push_str(&format!(" <small>({})</small>", escape_html(&site_str)));
-        }
-        let mut meta = Vec::new();
-        if !score.is_empty() {
-            meta.push(escape_html(&score));
-        }
-        if !author.is_empty() {
-            meta.push(format!("by {}", escape_html(&author)));
-        }
-        if !comments.is_empty() {
-            meta.push(format!(
-                r#"<a href="{}">{}</a>"#,
-                escape_attr(&comments_url),
-                escape_html(&comments)
-            ));
-        }
-        if !meta.is_empty() {
-            items.push_str(&format!("<br><small>{}</small>", meta.join(" · ")));
-        }
-        items.push_str("</li>");
+    let mut item = String::from("<li>");
+    let _ = write!(
+        item,
+        r#"<a href="{}">{}</a>"#,
+        escape_attr(&url),
+        escape_html(&title)
+    );
+    if !site_str.is_empty() {
+        let _ = write!(item, " <small>({})</small>", escape_html(&site_str));
     }
+    let mut meta = Vec::new();
+    if !score.is_empty() {
+        meta.push(escape_html(&score));
+    }
+    if !author.is_empty() {
+        meta.push(format!("by {}", escape_html(&author)));
+    }
+    if !comments.is_empty() {
+        meta.push(format!(
+            r#"<a href="{}">{}</a>"#,
+            escape_attr(&comments_url),
+            escape_html(&comments)
+        ));
+    }
+    if !meta.is_empty() {
+        let _ = write!(item, "<br><small>{}</small>", meta.join(" · "));
+    }
+    item.push_str("</li>");
+    Some(item)
+}
+
+fn extract_listing(root: &NodeRef) -> ExtractedContent {
+    let stories = select_all(root, "tr.athing");
+    let items: String = stories.iter().filter_map(build_listing_item).collect();
 
     let more_link = find_first(root, ".morelink");
     let mut html = format!("<ol>{items}</ol>");
@@ -182,11 +184,12 @@ fn extract_listing(root: &NodeRef) -> Result<ExtractedContent, ExtractError> {
         } else {
             text
         };
-        html.push_str(&format!(
+        let _ = write!(
+            html,
             r#"<p><a href="{}">{}</a></p>"#,
             escape_attr(&url),
             escape_html(&text)
-        ));
+        );
     }
 
     // Title comes from <title>X | Hacker News</title>
@@ -200,7 +203,7 @@ fn extract_listing(root: &NodeRef) -> Result<ExtractedContent, ExtractError> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Hacker News".to_string());
 
-    Ok(ExtractedContent {
+    ExtractedContent {
         content_html: html,
         title: Some(title),
         author: None,
@@ -208,7 +211,7 @@ fn extract_listing(root: &NodeRef) -> Result<ExtractedContent, ExtractError> {
         published: None,
         description: None,
         schema_overrides: vec![],
-    })
+    }
 }
 
 fn extract_story(root: &NodeRef, _ctx: &ExtractCtx<'_>) -> Result<ExtractedContent, ExtractError> {
@@ -235,17 +238,19 @@ fn extract_story(root: &NodeRef, _ctx: &ExtractCtx<'_>) -> Result<ExtractedConte
 
     let mut content = String::new();
     if !url.is_empty() && !url.starts_with("item?") {
-        content.push_str(&format!(
+        let _ = write!(
+            content,
             r#"<p><a href="{}" target="_blank">{}</a></p>"#,
             escape_attr(&url),
             escape_html(&url)
-        ));
+        );
     }
     if let Some(toptext) = find_first_in(&main_post, ".toptext") {
-        content.push_str(&format!(
+        let _ = write!(
+            content,
             r#"<div class="post-text">{}</div>"#,
             serialize_children(&toptext)
-        ));
+        );
     }
 
     let comments_html = build_comments(root);
@@ -286,8 +291,7 @@ fn extract_comment_page(
     })?;
     // The author/age is on the .athing row inside fatitem
     let author = find_first_in(&main_post, ".hnuser")
-        .map(|el| elem_text(&el))
-        .unwrap_or_else(|| "[deleted]".into());
+        .map_or_else(|| "[deleted]".into(), |el| elem_text(&el));
     let timestamp = find_first_in(&main_post, ".age")
         .and_then(|a| elem_attr(&a, "title"))
         .unwrap_or_default();
@@ -308,12 +312,13 @@ fn extract_comment_page(
     let title = format!("Comment by {author}: {title_preview}");
 
     let mut html = String::new();
-    html.push_str(&format!(
-        r#"<blockquote><p><strong>{}</strong> · {}</p>{}</blockquote>"#,
+    let _ = write!(
+        html,
+        r"<blockquote><p><strong>{}</strong> · {}</p>{}</blockquote>",
         escape_html(&author),
         escape_html(&date),
         comment_text
-    ));
+    );
 
     let comments_html = build_comments(root);
     if !comments_html.is_empty() {
@@ -348,15 +353,12 @@ fn build_comments(root: &NodeRef) -> String {
         let depth = find_first_in(c, ".ind img")
             .and_then(|img| elem_attr(&img, "width"))
             .and_then(|w| w.parse::<u32>().ok())
-            .map(|n| n / 40)
-            .unwrap_or(0);
-        let commtext = match find_first_in(c, ".commtext") {
-            Some(t) => t,
-            None => continue,
+            .map_or(0, |n| n / 40);
+        let Some(commtext) = find_first_in(c, ".commtext") else {
+            continue;
         };
-        let author = find_first_in(c, ".hnuser")
-            .map(|el| elem_text(&el))
-            .unwrap_or_else(|| "[deleted]".into());
+        let author =
+            find_first_in(c, ".hnuser").map_or_else(|| "[deleted]".into(), |el| elem_text(&el));
         let timestamp = find_first_in(c, ".age")
             .and_then(|a| elem_attr(&a, "title"))
             .unwrap_or_default();
@@ -368,9 +370,9 @@ fn build_comments(root: &NodeRef) -> String {
             out.push_str("<blockquote>");
         }
         out.push_str("<blockquote>");
-        out.push_str(&format!(r#"<p><strong>{}</strong>"#, escape_html(&author)));
+        let _ = write!(out, r"<p><strong>{}</strong>", escape_html(&author));
         if !date.is_empty() {
-            out.push_str(&format!(" · {}", escape_html(&date)));
+            let _ = write!(out, " · {}", escape_html(&date));
         }
         out.push_str("</p>");
         out.push_str(&body);

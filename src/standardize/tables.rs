@@ -3,7 +3,7 @@
 //! A "layout table" is one whose only purpose is positioning — typically
 //! a single-cell table or one whose every cell holds a single block element.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::walk::{element_children, is_any_tag, is_visually_empty, unwrap};
 use crate::dom::{DomCtx, DomPass};
@@ -24,11 +24,11 @@ fn is_layout_table(table: &NodeRef) -> bool {
         return true;
     }
     // Heuristic 1: only one row and no header cells.
-    let rows: Vec<NodeRef> = table
+    let row_count = table
         .descendants()
         .filter(|d| is_any_tag(d, &["tr"]))
-        .collect();
-    if rows.len() == 1 {
+        .count();
+    if row_count == 1 {
         let has_th = cells.iter().any(|c| is_any_tag(c, &["th"]));
         if !has_th {
             return true;
@@ -75,6 +75,9 @@ impl DomPass for Tables {
         }
 
         // Drop empty tbody/thead/tfoot wrappers (cleanup after cell removals).
+        // Collected up front: the loop body detaches nodes, and `descendants()`
+        // is a live tree traversal that mutation during iteration would corrupt.
+        #[allow(clippy::needless_collect)]
         for d in root.descendants().collect::<Vec<_>>() {
             if is_any_tag(&d, &["tbody", "thead", "tfoot"]) {
                 let kids = element_children(&d);

@@ -6,7 +6,7 @@
 //!   layer adds the title separately).
 //! * Strip trailing headings that are followed by no content.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::walk::{
     clone_attrs, count_words, descendants_post_order, descendants_pre_order, element_children,
@@ -17,9 +17,7 @@ use crate::dom::{DomCtx, DomPass};
 pub struct Headings;
 
 fn rename_heading(node: &NodeRef, new_tag: &str) -> Option<NodeRef> {
-    if node.as_element().is_none() {
-        return None;
-    }
+    node.as_element()?;
     let attrs = clone_attrs(node);
     let new_node = new_html_element(new_tag, attrs);
     let children: Vec<NodeRef> = node.children().collect();

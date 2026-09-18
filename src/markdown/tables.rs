@@ -1,6 +1,6 @@
 //! Table → Markdown rendering.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use super::escape::escape_table_cell;
 use super::util::{is_any_tag, is_tag};

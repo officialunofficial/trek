@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Trek is designed with performance, extensibility, and memory efficiency in mind. This document describes the high-level architecture and key design decisions.
+Trek's design targets performance, extensibility, and memory efficiency. This document describes the high-level architecture and key design decisions.
 
 ## System Architecture
 

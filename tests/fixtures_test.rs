@@ -54,8 +54,10 @@ fn update_mode() -> bool {
 
 /// Build a Trek instance pre-configured for fixture extraction.
 fn make_trek(url: &str) -> Trek {
-    let mut options = TrekOptions::default();
-    options.url = Some(url.to_string());
+    let mut options = TrekOptions {
+        url: Some(url.to_string()),
+        ..Default::default()
+    };
     options.output.separate_markdown = true;
     Trek::new(options)
 }

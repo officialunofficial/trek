@@ -7,7 +7,9 @@
 //! - README / repo-root: extract from `<article class="markdown-body">`.
 // AGENT-P2C: Phase 2C dev extractor.
 
-use kuchikiki::NodeRef;
+use std::fmt::Write as _;
+
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
@@ -52,9 +54,15 @@ fn is_github_dom(root: &NodeRef) -> bool {
 }
 
 fn classify(url: &str) -> Kind {
-    if regex::Regex::new(r"/issues/\d+").unwrap().is_match(url) {
+    if regex::Regex::new(r"/issues/\d+")
+        .expect("valid regex")
+        .is_match(url)
+    {
         Kind::Issue
-    } else if regex::Regex::new(r"/pull/\d+").unwrap().is_match(url) {
+    } else if regex::Regex::new(r"/pull/\d+")
+        .expect("valid regex")
+        .is_match(url)
+    {
         Kind::Pr
     } else {
         Kind::Repo
@@ -113,6 +121,14 @@ impl Extractor for GitHubExtractor {
             .map(|t| elem_text(&t))
             .filter(|s| !s.is_empty());
 
+        // `serde_json::json!` uses `unwrap` internally when interpolating values.
+        #[allow(clippy::disallowed_methods)]
+        let schema_override = if number.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::json!({"@type": "DiscussionForumPosting", "identifier": number})
+        };
+
         Ok(ExtractedContent {
             content_html: content,
             title,
@@ -128,17 +144,13 @@ impl Extractor for GitHubExtractor {
                 Some(published)
             },
             description: None,
-            schema_overrides: vec![if number.is_empty() {
-                serde_json::json!({})
-            } else {
-                serde_json::json!({"@type": "DiscussionForumPosting", "identifier": number})
-            }],
+            schema_overrides: vec![schema_override],
         })
     }
 }
 
 fn repo_info(url: &str, _root: &NodeRef) -> (String, String) {
-    let re = regex::Regex::new(r"github\.com/([^/]+)/([^/?#]+)").unwrap();
+    let re = regex::Regex::new(r"github\.com/([^/]+)/([^/?#]+)").expect("valid regex");
     if let Some(c) = re.captures(url) {
         return (c[1].to_string(), c[2].to_string());
     }
@@ -146,7 +158,7 @@ fn repo_info(url: &str, _root: &NodeRef) -> (String, String) {
 }
 
 fn extract_number(url: &str, _root: &NodeRef) -> String {
-    let re = regex::Regex::new(r"/(?:issues|pull)/(\d+)").unwrap();
+    let re = regex::Regex::new(r"/(?:issues|pull)/(\d+)").expect("valid regex");
     re.captures(url)
         .map(|c| c[1].to_string())
         .unwrap_or_default()
@@ -229,9 +241,8 @@ fn extract_comments_generic(root: &NodeRef) -> String {
     let mut out = String::new();
     let comments = select_all(root, "[data-wrapper-timeline-id]");
     for c in &comments {
-        let body = match find_first_in(c, ".markdown-body") {
-            Some(b) => b,
-            None => continue,
+        let Some(body) = find_first_in(c, ".markdown-body") else {
+            continue;
         };
         let author = find_first_in(c, "a[data-testid=\"avatar-link\"]")
             .or_else(|| find_first_in(c, "a[href^=\"/\"][data-hovercard-url*=\"/users/\"]"))
@@ -250,9 +261,9 @@ fn extract_comments_generic(root: &NodeRef) -> String {
             .unwrap_or_default()
             .to_string();
         out.push_str("<blockquote>");
-        out.push_str(&format!("<p><strong>{}</strong>", escape_html(&author)));
+        let _ = write!(out, "<p><strong>{}</strong>", escape_html(&author));
         if !date.is_empty() {
-            out.push_str(&format!(" · {}", escape_html(&date)));
+            let _ = write!(out, " · {}", escape_html(&date));
         }
         out.push_str("</p>");
         out.push_str(&serialize_node(&body));
@@ -271,9 +282,8 @@ fn extract_pr_comments(root: &NodeRef, pr_body: Option<&NodeRef>) -> String {
                 continue;
             }
         }
-        let body = match find_first_in(c, ".comment-body.markdown-body") {
-            Some(b) => b,
-            None => continue,
+        let Some(body) = find_first_in(c, ".comment-body.markdown-body") else {
+            continue;
         };
         let author = find_first_in(c, ".author")
             .map(|el| elem_text(&el))
@@ -286,9 +296,9 @@ fn extract_pr_comments(root: &NodeRef, pr_body: Option<&NodeRef>) -> String {
             .unwrap_or_default()
             .to_string();
         out.push_str("<blockquote>");
-        out.push_str(&format!("<p><strong>{}</strong>", escape_html(&author)));
+        let _ = write!(out, "<p><strong>{}</strong>", escape_html(&author));
         if !date.is_empty() {
-            out.push_str(&format!(" · {}", escape_html(&date)));
+            let _ = write!(out, " · {}", escape_html(&date));
         }
         out.push_str("</p>");
         out.push_str(&serialize_node(&body));

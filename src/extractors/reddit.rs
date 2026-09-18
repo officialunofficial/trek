@@ -10,10 +10,10 @@
 // `.child > .sitetable`. We port the depth-from-attribute logic for new
 // Reddit and the recursive container-walk for old Reddit.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
@@ -22,15 +22,16 @@ use crate::extractor::{
 
 /// AGENT-P2B: matches `*.reddit.com` (incl. `old.`/`new.`/`www.`) plus
 /// the `redd.it` short host.
-static REDDIT_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^https?://(?:[a-z0-9-]+\.)?reddit\.com/").expect("valid regex"));
+static REDDIT_URL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^https?://(?:[a-z0-9-]+\.)?reddit\.com/").expect("valid regex")
+});
 
 /// AGENT-P2B: Defuddle's `isCommentsPage` test — kept for reference and
 /// exercised by the unit tests. Not currently used to gate `can_extract`
 /// because Trek's sync path claims the whole post page.
 #[allow(dead_code)]
-static REDDIT_COMMENTS_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)/r/[^/]+/comments/[A-Za-z0-9]+/").expect("valid regex"));
+static REDDIT_COMMENTS_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)/r/[^/]+/comments/[A-Za-z0-9]+/").expect("valid regex"));
 
 /// Reddit extractor.
 pub struct RedditExtractor;
@@ -73,7 +74,7 @@ impl RedditExtractor {
     fn shreddit_attr(root: &NodeRef, attr: &str) -> Option<String> {
         let m = root.select_first("shreddit-post").ok()?;
         let attrs = m.attributes.borrow();
-        attrs.get(attr).map(|s| s.to_string())
+        attrs.get(attr).map(std::string::ToString::to_string)
     }
 
     /// New-Reddit comment walk: each `<shreddit-comment>` carries a `depth`
@@ -86,8 +87,8 @@ impl RedditExtractor {
         for m in iter {
             let attrs = m.attributes.borrow();
             let depth: u32 = attrs.get("depth").and_then(|s| s.parse().ok()).unwrap_or(0);
-            let author = attrs.get("author").map(|s| s.to_string());
-            let timestamp = attrs.get("created").map(|s| s.to_string());
+            let author = attrs.get("author").map(std::string::ToString::to_string);
+            let timestamp = attrs.get("created").map(std::string::ToString::to_string);
             drop(attrs);
 
             // Body lives inside `[slot="comment"]`.
@@ -130,8 +131,7 @@ impl RedditExtractor {
                     let attrs = el.attributes.borrow();
                     if attrs
                         .get("class")
-                        .map(|c| c.split_whitespace().any(|cl| cl == "child"))
-                        .unwrap_or(false)
+                        .is_some_and(|c| c.split_whitespace().any(|cl| cl == "child"))
                     {
                         depth = depth.saturating_add(1);
                     }
@@ -140,7 +140,9 @@ impl RedditExtractor {
             }
 
             let attrs = m.attributes.borrow();
-            let author = attrs.get("data-author").map(|s| s.to_string());
+            let author = attrs
+                .get("data-author")
+                .map(std::string::ToString::to_string);
             drop(attrs);
 
             let body = m
@@ -160,7 +162,7 @@ impl RedditExtractor {
                 .ok()
                 .and_then(|t| {
                     let a = t.attributes.borrow();
-                    a.get("datetime").map(|s| s.to_string())
+                    a.get("datetime").map(std::string::ToString::to_string)
                 });
 
             out.push(ConversationMessage {
@@ -244,7 +246,7 @@ impl Extractor for RedditExtractor {
                 .ok()
                 .and_then(|m| {
                     let a = m.attributes.borrow();
-                    a.get("data-author").map(|s| s.to_string())
+                    a.get("data-author").map(std::string::ToString::to_string)
                 })
                 .unwrap_or_default()
         } else {
@@ -311,10 +313,9 @@ impl ConversationExtractor for RedditExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]
@@ -364,7 +365,7 @@ mod tests {
         );
     }
 
-    /// REDDIT_COMMENTS_URL doesn't drive `can_extract` (just reference
+    /// `REDDIT_COMMENTS_URL` doesn't drive `can_extract` (just reference
     /// matches Defuddle's helper); but verifying the regex compiles and
     /// matches the right shape protects against accidental edits.
     #[test]

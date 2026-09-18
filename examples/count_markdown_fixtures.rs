@@ -12,8 +12,9 @@ fn main() {
     let fixtures_dir = crate_root.join("tests/fixtures");
     let expected_dir = crate_root.join("tests/expected");
 
-    let frontmatter = regex::Regex::new(r#"<!--\s*(\{"url":.*?\})\s*-->"#).unwrap();
-    let prefix_pat = regex::Regex::new(r"^[a-z]+--").unwrap();
+    let frontmatter =
+        regex::Regex::new(r#"<!--\s*(\{"url":.*?\})\s*-->"#).expect("valid frontmatter regex");
+    let prefix_pat = regex::Regex::new(r"^[a-z]+--").expect("valid prefix regex");
 
     let mut entries: Vec<_> = fs::read_dir(&fixtures_dir)
         .expect("read fixtures dir")
@@ -31,7 +32,7 @@ fn main() {
     let mut total = 0usize;
     let mut pass = 0usize;
     let mut body_pass = 0usize;
-    let mut body_pass_names: Vec<String> = Vec::new();
+    let body_pass_names: Vec<String> = Vec::new();
     let mut failing: Vec<(String, String, String)> = Vec::new();
     // Fixtures whose markdown body matches Defuddle but whose JSON metadata
     // preamble does not — i.e. pure metadata-mismatch cases. Useful when
@@ -43,7 +44,7 @@ fn main() {
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap()
+            .expect("fixture file has a stem")
             .to_string();
         let html = fs::read_to_string(&path).expect("read fixture");
 
@@ -60,8 +61,10 @@ fn main() {
             format!("https://{stripped}")
         };
 
-        let mut options = TrekOptions::default();
-        options.url = Some(url);
+        let mut options = TrekOptions {
+            url: Some(url),
+            ..Default::default()
+        };
         options.output.separate_markdown = true;
         let trek = Trek::new(options);
         let response = match trek.parse(&html) {
@@ -86,7 +89,8 @@ fn main() {
             "published".into(),
             serde_json::Value::String(response.metadata.published.clone()),
         );
-        let json = serde_json::to_string_pretty(&serde_json::Value::Object(map)).unwrap();
+        let json = serde_json::to_string_pretty(&serde_json::Value::Object(map))
+            .expect("serialize metadata map");
         let body = response.content_markdown.clone().unwrap_or_default();
         let result = format!("```json\n{json}\n```\n\n{body}");
 
@@ -143,7 +147,7 @@ fn main() {
             let stem = path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap()
+                .expect("fixture file has a stem")
                 .to_string();
             if expected_dir.join(format!("{stem}.md")).exists() && !failing_names.contains(&stem) {
                 println!("PASS: {stem}");
@@ -184,7 +188,7 @@ fn main() {
         // Sort by absolute character difference, ascending.
         let mut small = failing.clone();
         small.sort_by_key(|(_, e, a)| {
-            ((a.trim().len() as isize - e.trim().len() as isize).abs()) as usize
+            (a.trim().len() as isize - e.trim().len() as isize).unsigned_abs()
         });
         let take = std::env::var("SMALL_N")
             .ok()

@@ -1,6 +1,6 @@
 //! Element processors for different content types.
 //!
-//! Track D — kuchikiki-tree element handlers, ported from Defuddle's
+//! Track D — DOM-tree element handlers, ported from Defuddle's
 //! `src/elements/`. Each public `normalize_*` function mutates the DOM in
 //! place; `normalize_all` runs them in pipeline order.
 
@@ -20,7 +20,7 @@ pub use images::normalize_images;
 #[cfg(feature = "math-base")]
 pub use math::normalize_math_base;
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 use lol_html::html_content::Element;
 
 /// Run every Track-D element normalization pass against `root` in pipeline
@@ -39,7 +39,7 @@ pub fn normalize_all(root: &NodeRef) {
 }
 
 /// Legacy lol_html-based trait kept for backwards compatibility with
-/// pre-Track-D callers. New element passes use the kuchikiki helpers above.
+/// pre-Track-D callers. New element passes use the DOM helpers above.
 pub trait ElementProcessor {
     /// Process an element
     fn process(element: &mut Element);

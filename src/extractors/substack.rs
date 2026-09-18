@@ -6,11 +6,13 @@
 //!
 //! Handles three shapes:
 //! - rendered post body `div.body.markup`,
-//! - notes (ProseMirror editor), and
+//! - notes (`ProseMirror` editor), and
 //! - SSR `window._preloads` JSON fallback (best-effort minimal).
 // AGENT-P2C: Phase 2C knowledge extractor.
 
-use kuchikiki::NodeRef;
+use std::fmt::Write as _;
+
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
@@ -109,7 +111,7 @@ fn post_result(root: &NodeRef, body: &NodeRef) -> ExtractedContent {
         .or_else(|| {
             select_all(root, "a[href*=\"substack.com/@\"]")
                 .first()
-                .map(|el| elem_text(el))
+                .map(elem_text)
         })
         .unwrap_or_default();
     let description = meta_property(root, "og:description").unwrap_or_default();
@@ -138,10 +140,11 @@ fn note_result(root: &NodeRef, note: &NodeRef) -> ExtractedContent {
     // Append image if present in the page.
     if let Some(og_img) = meta_property(root, "og:image") {
         if !og_img.is_empty() {
-            html.push_str(&format!(
+            let _ = write!(
+                html,
                 r#"<img src="{}" alt="" />"#,
                 html_escape::encode_double_quoted_attribute(&og_img)
-            ));
+            );
         }
     }
     let title = meta_property(root, "og:title").unwrap_or_default();
