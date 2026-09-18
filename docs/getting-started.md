@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you set up your development environment for working with Trek.
+This guide helps you set up your development environment for Trek.
 
 ## Prerequisites
 
@@ -33,10 +33,10 @@ cd trek
 ### 4. Install Development Dependencies
 
 ```bash
-make install-dev-deps
+just install-dev-deps
 ```
 
-This will install:
+This installs:
 - `wasm-pack`: For building WebAssembly packages
 - `cargo-tarpaulin`: For code coverage
 - `cargo-watch`: For development auto-reload
@@ -47,23 +47,23 @@ This will install:
 
 ```bash
 # Debug build
-make build
+just build
 
 # Release build
-make build-release
+just build-release
 ```
 
 ### WebAssembly Build
 
 ```bash
 # Release build (optimized for size)
-make wasm-build
+just wasm-build
 
 # Debug build (with debug symbols)
-make wasm-build-debug
+just wasm-build-debug
 ```
 
-The WebAssembly build outputs will be in the `pkg/` directory.
+The WebAssembly build puts its output in the `pkg/` directory.
 
 ## Development Workflow
 
@@ -72,7 +72,7 @@ The WebAssembly build outputs will be in the `pkg/` directory.
 Before making changes, ensure everything compiles:
 
 ```bash
-make check
+just check
 ```
 
 ### 2. Format Code
@@ -80,7 +80,7 @@ make check
 Trek uses rustfmt for consistent code formatting:
 
 ```bash
-make fmt
+just fmt
 ```
 
 ### 3. Run Linter
@@ -88,23 +88,23 @@ make fmt
 Use clippy for catching common mistakes:
 
 ```bash
-make clippy
+just clippy
 ```
 
 ### 4. Run Tests
 
 ```bash
 # Run all tests
-make test
+just test
 
 # Run tests with output
-make test-verbose
+just test-verbose
 
 # Run WebAssembly tests
-make wasm-test
+just wasm-test
 
 # Run benchmarks
-make bench
+just bench
 ```
 
 ### 5. Pre-commit Checks
@@ -112,7 +112,7 @@ make bench
 Before committing, run all checks:
 
 ```bash
-make pre-commit
+just pre-commit
 ```
 
 This runs:
@@ -126,7 +126,7 @@ This runs:
 To test WebAssembly builds in the browser:
 
 ```bash
-make serve
+just serve
 ```
 
 Then open http://localhost:8000/test-wasm.html in your browser.
@@ -150,7 +150,7 @@ trek/
 ├── benches/                # Benchmarks
 ├── pkg/                    # WebAssembly build output
 ├── Cargo.toml              # Rust dependencies
-├── Makefile                # Build commands
+├── justfile                # Build commands
 └── test-wasm.html          # WebAssembly test page
 ```
 
@@ -169,7 +169,7 @@ trek/
 
 4. Run pre-commit checks:
    ```bash
-   make pre-commit
+   just pre-commit
    ```
 
 5. Commit and push your changes
@@ -206,7 +206,7 @@ RUST_LOG=debug cargo test
 
 1. Build with debug symbols:
    ```bash
-   make wasm-build-debug
+   just wasm-build-debug
    ```
 
 2. Use browser developer tools to inspect console output
@@ -221,7 +221,7 @@ RUST_LOG=debug cargo test
 Run benchmarks to ensure your changes don't regress performance:
 
 ```bash
-make bench
+just bench
 ```
 
 Compare benchmark results:
@@ -245,8 +245,8 @@ If you encounter compilation errors:
 
 2. Clean and rebuild:
    ```bash
-   make clean
-   make build
+   just clean
+   just build
    ```
 
 ### WebAssembly Build Failures
@@ -264,7 +264,7 @@ If WASM builds fail:
    ```
 
 3. Check for getrandom compatibility:
-   - The Makefile sets the correct RUSTFLAGS automatically
+   - The justfile sets the correct RUSTFLAGS automatically
 
 ### Test Failures
 
@@ -272,7 +272,7 @@ If tests fail:
 
 1. Run tests with verbose output:
    ```bash
-   make test-verbose
+   just test-verbose
    ```
 
 2. Run a specific failing test:

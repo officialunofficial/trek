@@ -71,7 +71,7 @@ pub fn get_fixtures() -> Vec<Fixture> {
 ///    (e.g. `codeblocks--`) and prepend `https://`.
 pub fn resolve_url(html: &str, fixture_path: &Path) -> String {
     // Allow caching the regex across calls.
-    static FRONTMATTER_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+    static FRONTMATTER_PATTERN: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
         Regex::new(r#"<!--\s*(\{"url":.*?\})\s*-->"#).expect("frontmatter regex compiles")
     });
 
@@ -97,8 +97,8 @@ pub fn resolve_url(html: &str, fixture_path: &Path) -> String {
 /// fixtures, e.g. `codeblocks--foo`). Returns the original string when no such
 /// prefix is present.
 fn strip_prefix_marker(stem: &str) -> String {
-    static PREFIX_PATTERN: once_cell::sync::Lazy<Regex> =
-        once_cell::sync::Lazy::new(|| Regex::new(r"^[a-z]+--").expect("prefix regex compiles"));
+    static PREFIX_PATTERN: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"^[a-z]+--").expect("prefix regex compiles"));
     PREFIX_PATTERN.replace(stem, "").into_owned()
 }
 

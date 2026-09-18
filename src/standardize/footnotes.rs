@@ -14,7 +14,7 @@
 //! This is intentionally narrow. Larger restructuring is left as TODO so we
 //! don't break the markdown layer's existing happy paths.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::walk::{descendants_post_order, get_attr, is_any_tag, new_html_element};
 use crate::dom::{DomCtx, DomPass};

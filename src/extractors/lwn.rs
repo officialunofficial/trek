@@ -5,7 +5,9 @@
 //! anchors stripped) plus a flat comment tree from `details.CommentBox`.
 // AGENT-P2C: Phase 2C news extractor.
 
-use kuchikiki::NodeRef;
+use std::fmt::Write as _;
+
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
@@ -171,9 +173,9 @@ fn extract_comments(main: &NodeRef) -> String {
             out.push_str("<blockquote>");
         }
         out.push_str("<blockquote>");
-        out.push_str(&format!("<p><strong>{}</strong>", escape_html(&author)));
+        let _ = write!(out, "<p><strong>{}</strong>", escape_html(&author));
         if !date.is_empty() {
-            out.push_str(&format!(" · {}", escape_html(&date)));
+            let _ = write!(out, " · {}", escape_html(&date));
         }
         out.push_str("</p>");
         out.push_str(&body);

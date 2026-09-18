@@ -3,8 +3,8 @@
 //! Defuddle ports `math.base.ts` here. The base tier covers the cheap,
 //! dependency-free conversions:
 //!
-//! * MathML elements with `alttext` → `<span data-math="$alttext$">…</span>`.
-//! * KaTeX wrappers (`<span class="katex">…<annotation
+//! * `MathML` elements with `alttext` → `<span data-math="$alttext$">…</span>`.
+//! * `KaTeX` wrappers (`<span class="katex">…<annotation
 //!   encoding="application/x-tex">FORMULA</annotation>…</span>`) →
 //!   `<span data-math="$FORMULA$">FORMULA</span>`.
 //! * Display math (recognized via class / nesting) is wrapped with `$$ … $$`
@@ -15,9 +15,9 @@
 //! emit literal text containing the delimiters. This is the same shape
 //! Defuddle's `math.core` produces for the browser-core bundle.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::elements::util::{attr, has_class, is_tag, new_element, select_all, set_attr};
 
@@ -111,9 +111,9 @@ fn process_katex(root: &NodeRef) {
     // these spans (see `markdown::mod` `katex_latex`) — we just need to
     // hoist annotations into a stable attribute.
     let nodes = select_all(root, ".katex, .katex-display");
-    let mut handled: Vec<*const kuchikiki::Node> = Vec::new();
+    let mut handled: Vec<*const crate::dom::engine::Node> = Vec::new();
     for el in nodes {
-        let ptr = std::rc::Rc::as_ptr(&el.0).cast::<kuchikiki::Node>();
+        let ptr = std::rc::Rc::as_ptr(&el.0).cast::<crate::dom::engine::Node>();
         if handled.iter().any(|h| std::ptr::eq(*h, ptr)) {
             continue;
         }
@@ -131,22 +131,24 @@ fn process_katex(root: &NodeRef) {
             continue;
         }
 
-        let latex = attr(&el, "data-latex").filter(|s| !s.is_empty()).or_else(|| {
-            el.descendants()
-                .find(|n| {
-                    is_tag(n, "annotation")
-                        && attr(n, "encoding").as_deref() == Some("application/x-tex")
-                })
-                .map(|n| n.text_contents().trim().to_string())
-                .filter(|s| !s.is_empty())
-        });
+        let latex = attr(&el, "data-latex")
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                el.descendants()
+                    .find(|n| {
+                        is_tag(n, "annotation")
+                            && attr(n, "encoding").as_deref() == Some("application/x-tex")
+                    })
+                    .map(|n| n.text_contents().trim().to_string())
+                    .filter(|s| !s.is_empty())
+            });
 
         let Some(latex) = latex else {
             continue;
         };
         for d in el.descendants() {
             if has_class(&d, "katex") || has_class(&d, "katex-display") {
-                handled.push(std::rc::Rc::as_ptr(&d.0).cast::<kuchikiki::Node>());
+                handled.push(std::rc::Rc::as_ptr(&d.0).cast::<crate::dom::engine::Node>());
             }
         }
         // Set `data-latex` so markdown rendering reads from a stable spot.
@@ -171,21 +173,11 @@ fn process_katex(root: &NodeRef) {
     }
 }
 
-/// Wrap a LaTeX formula in `$…$` (inline) or `$$…$$` (block).
-fn wrap_delimiters(latex: &str, block: bool) -> String {
-    let trimmed = latex.trim();
-    if block {
-        format!("$${}$$", trimmed)
-    } else {
-        format!("${}$", trimmed)
-    }
-}
-
 // ---------------------------------------------------------------------------
 // LaTeX-image rendering services
 // ---------------------------------------------------------------------------
 
-static LATEX_PARAM_RE: Lazy<[Regex; 5]> = Lazy::new(|| {
+static LATEX_PARAM_RE: LazyLock<[Regex; 5]> = LazyLock::new(|| {
     [
         Regex::new(r"(?i)[?&]latex=([^&#]+)").expect("latex param"),
         Regex::new(r"(?i)[?&]chl=([^&#]+)").expect("chl param"),
@@ -195,8 +187,8 @@ static LATEX_PARAM_RE: Lazy<[Regex; 5]> = Lazy::new(|| {
     ]
 });
 
-static LOOKS_LIKE_LATEX_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\\[a-zA-Z]{2,}").expect("looks like latex"));
+static LOOKS_LIKE_LATEX_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\\[a-zA-Z]{2,}").expect("looks like latex"));
 
 fn percent_decode(s: &str) -> Option<String> {
     // Replace '+' with space, then decode %XX sequences.
@@ -208,7 +200,11 @@ fn percent_decode(s: &str) -> Option<String> {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
             let hi = (bytes[i + 1] as char).to_digit(16)?;
             let lo = (bytes[i + 2] as char).to_digit(16)?;
-            out.push(((hi << 4) | lo) as u8);
+            // `hi` and `lo` are single hex digits (0..=15), so the combined
+            // value always fits in a `u8`; the cast cannot truncate.
+            #[allow(clippy::cast_possible_truncation)]
+            let byte = ((hi << 4) | lo) as u8;
+            out.push(byte);
             i += 3;
         } else {
             out.push(bytes[i]);
@@ -241,17 +237,14 @@ fn extract_latex_from_image_src(src: &str) -> Option<String> {
     }
     // Bare query string (e.g. `latex.codecogs.com/svg.image?%5Cfrac…`).
     if let Some(q_idx) = src.find('?') {
-        let q_end = src[q_idx + 1..].find('#').map_or(src.len(), |i| q_idx + 1 + i);
+        let q_end = src[q_idx + 1..]
+            .find('#')
+            .map_or(src.len(), |i| q_idx + 1 + i);
         let q = &src[q_idx + 1..q_end];
-        if !q.contains('=') {
-            if let Some(s) = decode_latex_segment(q) {
-                return Some(s);
-            }
-        } else {
-            // Some services use `?key=` only as the LaTeX itself (rare).
-            if let Some(s) = decode_latex_segment(q) {
-                return Some(s);
-            }
+        // Covers both a bare query string and services that use `?key=`
+        // as the LaTeX itself (rare) — both decode the same way.
+        if let Some(s) = decode_latex_segment(q) {
+            return Some(s);
         }
     }
     // Try URL path segments containing %5C (encoded backslash).
@@ -341,10 +334,10 @@ fn process_latex_images(root: &NodeRef) {
         } else {
             None
         };
-        let latex_from_src = if !src.is_empty() {
-            extract_latex_from_image_src(&src)
-        } else {
+        let latex_from_src = if src.is_empty() {
             None
+        } else {
+            extract_latex_from_image_src(&src)
         };
 
         let Some(latex) = latex_from_alt.or(latex_from_src) else {
@@ -437,26 +430,24 @@ fn process_data_math_spans(root: &NodeRef) {
 // ---------------------------------------------------------------------------
 
 // Combined LaTeX delimiter regex. Order: $$..$$, \[..\], $..$, \(..\).
-static LATEX_DELIM_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]|\$([^\s$][^$]*[^\s$]|[^\s$])\$|\\\((.+?)\\\)",
-    )
-    .expect("LaTeX delim regex")
+static LATEX_DELIM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]|\$([^\s$][^$]*[^\s$]|[^\s$])\$|\\\((.+?)\\\)")
+        .expect("LaTeX delim regex")
 });
 
 const LATEX_CMD_RE: &str = r"\\[a-zA-Z]";
 const LATEX_STRUCT_CHARS: &[char] = &['_', '^', '{', '}'];
 
 fn contains_latex_command(s: &str) -> bool {
-    static LATEX_CMD: Lazy<Regex> =
-        Lazy::new(|| Regex::new(LATEX_CMD_RE).expect("latex cmd regex"));
+    static LATEX_CMD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(LATEX_CMD_RE).expect("latex cmd regex"));
     if LATEX_CMD.is_match(s) {
         return true;
     }
     s.chars().any(|c| LATEX_STRUCT_CHARS.contains(&c))
 }
 
-/// True if the document includes a MathJax or KaTeX `<script>` tag.
+/// True if the document includes a `MathJax` or `KaTeX` `<script>` tag.
 fn has_math_library(root: &NodeRef) -> bool {
     for s in select_all(root, "script") {
         if let Some(src) = attr(&s, "src") {
@@ -474,9 +465,7 @@ fn has_math_library(root: &NodeRef) -> bool {
     false
 }
 
-const RAW_LATEX_SKIP_TAGS: &[&str] = &[
-    "pre", "code", "script", "style", "math", "svg", "textarea",
-];
+const RAW_LATEX_SKIP_TAGS: &[&str] = &["pre", "code", "script", "style", "math", "svg", "textarea"];
 
 fn is_inside_skip_tag(node: &NodeRef) -> bool {
     let mut cur = node.parent();
@@ -485,7 +474,7 @@ fn is_inside_skip_tag(node: &NodeRef) -> bool {
             .as_element()
             .map(|e| e.name.local.to_string().to_ascii_lowercase())
         {
-            if RAW_LATEX_SKIP_TAGS.iter().any(|t| *t == name.as_str()) {
+            if RAW_LATEX_SKIP_TAGS.contains(&name.as_str()) {
                 return true;
             }
         }
@@ -500,6 +489,111 @@ enum LatexPart {
     Math { latex: String, block: bool },
 }
 
+/// Build the ordered text/math parts for a single text node's contents.
+/// Returns an empty `Vec` when the text has no recognized LaTeX delimiters.
+fn build_latex_parts(text: &str) -> (Vec<LatexPart>, bool) {
+    let mut parts: Vec<LatexPart> = Vec::new();
+    let mut last_end = 0usize;
+    let mut had_block = false;
+
+    for caps in LATEX_DELIM_RE.captures_iter(text) {
+        let m = caps.get(0).expect("group 0");
+        let block_content = caps.get(1).or_else(|| caps.get(2));
+        let inline_content = caps.get(3).or_else(|| caps.get(4));
+        let is_backslash = caps.get(2).is_some() || caps.get(4).is_some();
+        let is_block = block_content.is_some();
+        let raw_latex = block_content.or(inline_content).map_or("", |x| x.as_str());
+        let latex = raw_latex.trim().to_string();
+        if latex.is_empty() {
+            continue;
+        }
+        if !is_backslash && !contains_latex_command(&latex) {
+            continue;
+        }
+
+        if last_end < m.start() {
+            parts.push(LatexPart::Text(text[last_end..m.start()].to_string()));
+        }
+        if is_block {
+            had_block = true;
+        }
+        parts.push(LatexPart::Math {
+            latex,
+            block: is_block,
+        });
+        last_end = m.end();
+    }
+    if parts.is_empty() {
+        return (parts, had_block);
+    }
+    if last_end < text.len() {
+        parts.push(LatexPart::Text(text[last_end..].to_string()));
+    }
+    (parts, had_block)
+}
+
+/// True if any sibling of `text_node` under `parent` carries non-blank
+/// content. Block math must be the entire content of its paragraph.
+fn parent_has_other_content(parent: &NodeRef, text_node: &NodeRef) -> bool {
+    parent.children().any(|c| {
+        if std::ptr::eq(
+            std::rc::Rc::as_ptr(&c.0).cast::<()>(),
+            std::rc::Rc::as_ptr(&text_node.0).cast::<()>(),
+        ) {
+            return false;
+        }
+        if let Some(t) = c.as_text() {
+            return !t.borrow().trim().is_empty();
+        }
+        c.as_element().is_some()
+    })
+}
+
+/// Downgrade block math parts to inline when they're not the sole content
+/// of their parent (block math should be the entire content of a paragraph).
+fn force_inline_if_surrounded(parts: &mut [LatexPart], text_node: &NodeRef) {
+    let has_text_around = parts
+        .iter()
+        .any(|p| matches!(p, LatexPart::Text(s) if !s.trim().is_empty()));
+    let parent_has_other = text_node
+        .parent()
+        .is_some_and(|p| parent_has_other_content(&p, text_node));
+    if has_text_around || parent_has_other {
+        for p in &mut *parts {
+            if let LatexPart::Math { block, .. } = p {
+                *block = false;
+            }
+        }
+    }
+}
+
+/// Replace `text_node` with the given text/math parts, in order.
+fn insert_latex_parts(text_node: &NodeRef, parts: Vec<LatexPart>) {
+    for part in parts {
+        match part {
+            LatexPart::Text(s) => {
+                text_node.insert_before(NodeRef::new_text(s));
+            }
+            LatexPart::Math { latex, block } => {
+                let display = if block { "block" } else { "inline" };
+                let math_el = new_element(
+                    "math",
+                    &[
+                        ("xmlns", "http://www.w3.org/1998/Math/MathML"),
+                        ("display", display),
+                        ("data-latex", &latex),
+                        ("alttext", &latex),
+                    ],
+                );
+                math_el.append(NodeRef::new_text(latex.clone()));
+                // Ensure alttext attribute is set (so process_mathml picks it up).
+                set_attr(&math_el, "alttext", &latex);
+                text_node.insert_before(math_el);
+            }
+        }
+    }
+}
+
 fn wrap_raw_latex_delimiters(root: &NodeRef) {
     // Note: defuddle gates this on the presence of a MathJax/KaTeX
     // `<script>` tag, but our pipeline strips scripts before this pass
@@ -509,10 +603,13 @@ fn wrap_raw_latex_delimiters(root: &NodeRef) {
     let _ = has_math_library; // keep defuddle parity helper available
 
     // Skip if document already has rendered math (other passes will handle).
-    let already_has_math = select_all(root, "math, mjx-container, .MathJax, .katex, [data-math], [data-latex]")
-        .into_iter()
-        .next()
-        .is_some();
+    let already_has_math = select_all(
+        root,
+        "math, mjx-container, .MathJax, .katex, [data-math], [data-latex]",
+    )
+    .into_iter()
+    .next()
+    .is_some();
     if already_has_math {
         return;
     }
@@ -525,106 +622,26 @@ fn wrap_raw_latex_delimiters(root: &NodeRef) {
         .collect();
 
     for text_node in text_nodes {
-        let text = text_node.as_text().map(|t| t.borrow().clone()).unwrap_or_default();
+        let text = text_node
+            .as_text()
+            .map_or_else(String::new, |t| t.borrow().clone());
         if !text.contains('$') && !text.contains("\\(") && !text.contains("\\[") {
             continue;
         }
 
-        // Build parts.
-        let mut parts: Vec<LatexPart> = Vec::new();
-        let mut last_end = 0usize;
-        let mut had_block = false;
-
-        for caps in LATEX_DELIM_RE.captures_iter(&text) {
-            let m = caps.get(0).expect("group 0");
-            let block_content = caps.get(1).or_else(|| caps.get(2));
-            let inline_content = caps.get(3).or_else(|| caps.get(4));
-            let is_backslash = caps.get(2).is_some() || caps.get(4).is_some();
-            let is_block = block_content.is_some();
-            let raw_latex = block_content.or(inline_content).map(|x| x.as_str()).unwrap_or("");
-            let latex = raw_latex.trim().to_string();
-            if latex.is_empty() {
-                continue;
-            }
-            if !is_backslash && !contains_latex_command(&latex) {
-                continue;
-            }
-
-            if last_end < m.start() {
-                parts.push(LatexPart::Text(text[last_end..m.start()].to_string()));
-            }
-            if is_block {
-                had_block = true;
-            }
-            parts.push(LatexPart::Math {
-                latex,
-                block: is_block,
-            });
-            last_end = m.end();
-        }
+        let (mut parts, had_block) = build_latex_parts(&text);
         if parts.is_empty() {
             continue;
-        }
-        if last_end < text.len() {
-            parts.push(LatexPart::Text(text[last_end..].to_string()));
         }
 
         // Force inline if there's surrounding text or sibling content in the
         // same parent (block math should be the entire content of a paragraph).
         if had_block {
-            let has_text_around = parts
-                .iter()
-                .any(|p| matches!(p, LatexPart::Text(s) if !s.trim().is_empty()));
-            let parent_has_other = text_node
-                .parent()
-                .map(|p| {
-                    p.children().any(|c| {
-                        if std::ptr::eq(
-                            std::rc::Rc::as_ptr(&c.0).cast::<()>(),
-                            std::rc::Rc::as_ptr(&text_node.0).cast::<()>(),
-                        ) {
-                            return false;
-                        }
-                        if let Some(t) = c.as_text() {
-                            return !t.borrow().trim().is_empty();
-                        }
-                        c.as_element().is_some()
-                    })
-                })
-                .unwrap_or(false);
-            if has_text_around || parent_has_other {
-                for p in parts.iter_mut() {
-                    if let LatexPart::Math { block, .. } = p {
-                        *block = false;
-                    }
-                }
-            }
+            force_inline_if_surrounded(&mut parts, &text_node);
         }
 
         // Insert parts before the original text node, then detach it.
-        for part in parts {
-            match part {
-                LatexPart::Text(s) => {
-                    text_node.insert_before(NodeRef::new_text(s));
-                }
-                LatexPart::Math { latex, block } => {
-                    let display = if block { "block" } else { "inline" };
-                    let math_el = new_element(
-                        "math",
-                        &[
-                            ("xmlns", "http://www.w3.org/1998/Math/MathML"),
-                            ("display", display),
-                            ("data-latex", &latex),
-                            ("alttext", &latex),
-                        ],
-                    );
-                    math_el.append(NodeRef::new_text(latex.clone()));
-                    // Ensure alttext attribute is set (so process_mathml picks it up).
-                    set_attr(&math_el, "alttext", &latex);
-                    text_node.insert_before(math_el);
-                }
-            }
-        }
+        insert_latex_parts(&text_node, parts);
         text_node.detach();
     }
 }
@@ -632,16 +649,15 @@ fn wrap_raw_latex_delimiters(root: &NodeRef) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
         let mut buf = Vec::new();
-        node.serialize(&mut buf).unwrap();
-        String::from_utf8(buf).unwrap()
+        node.serialize(&mut buf).expect("serialize node");
+        String::from_utf8(buf).expect("serialized output is valid utf8")
     }
 
     #[test]
@@ -681,7 +697,7 @@ mod tests {
 
     #[test]
     fn raw_latex_dollars_become_math() {
-        let html = r#"<html><body><p>An equation $x^2 + y^2 = z^2$ here.</p></body></html>"#;
+        let html = r"<html><body><p>An equation $x^2 + y^2 = z^2$ here.</p></body></html>";
         let root = parse(html);
         normalize_math_base(&root);
         let out = serialize(&root);
@@ -691,7 +707,7 @@ mod tests {
 
     #[test]
     fn raw_latex_backslash_brackets_become_block_math() {
-        let html = r#"<html><body><p>\[F = ma\]</p></body></html>"#;
+        let html = r"<html><body><p>\[F = ma\]</p></body></html>";
         let root = parse(html);
         normalize_math_base(&root);
         let out = serialize(&root);
@@ -706,7 +722,7 @@ mod tests {
         normalize_math_base(&root);
         let out = serialize(&root);
         assert!(out.contains("<math"), "got: {out}");
-        assert!(out.contains(r#"\frac{a}{b}"#), "got: {out}");
+        assert!(out.contains(r"\frac{a}{b}"), "got: {out}");
     }
 
     #[test]
@@ -716,6 +732,6 @@ mod tests {
         normalize_math_base(&root);
         let out = serialize(&root);
         assert!(out.contains("<math"), "got: {out}");
-        assert!(out.contains(r#"\frac{a}{b}"#), "got: {out}");
+        assert!(out.contains(r"\frac{a}{b}"), "got: {out}");
     }
 }

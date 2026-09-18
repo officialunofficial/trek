@@ -1,12 +1,11 @@
-//! Shared helpers for kuchikiki-based element handlers (Track D).
+//! Shared helpers for DOM-based element handlers (Track D).
 //!
 //! These mirror the helpers in `markdown/util.rs` but are scoped to this
 //! module so we can extend them freely without touching the markdown
 //! renderer.
 
-use kuchikiki::NodeRef;
-use kuchikiki::iter::NodeIterator;
-use kuchikiki::traits::TendrilSink;
+use crate::dom::engine::NodeRef;
+use crate::dom::engine::traits::NodeIterator;
 
 /// Get an attribute value from an element node.
 pub fn attr(node: &NodeRef, name: &str) -> Option<String> {
@@ -72,7 +71,7 @@ pub fn new_element(tag: &str, attrs: &[(&str, &str)]) -> NodeRef {
     html.push_str("></");
     html.push_str(tag);
     html.push_str("></body></html>");
-    let doc = kuchikiki::parse_html().one(html.as_str());
+    let doc = crate::dom::parse_html(html.as_str());
     for d in doc.descendants().elements() {
         if d.name.local.to_string().eq_ignore_ascii_case(tag) {
             let n = d.as_node().clone();
@@ -107,10 +106,10 @@ pub fn transfer_children(from: &NodeRef, to: &NodeRef) {
 
 /// Collect all element descendants matching `selector` into a `Vec`.
 pub fn select_all(root: &NodeRef, selector: &str) -> Vec<NodeRef> {
-    match root.select(selector) {
-        Ok(iter) => iter.map(|d| d.as_node().clone()).collect(),
-        Err(_) => Vec::new(),
-    }
+    root.select(selector).map_or_else(
+        |()| Vec::new(),
+        |iter| iter.map(|d| d.as_node().clone()).collect(),
+    )
 }
 
 /// First descendant matching `selector`, if any.

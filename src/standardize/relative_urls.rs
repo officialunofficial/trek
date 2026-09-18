@@ -1,7 +1,7 @@
 //! Resolve relative `href`/`src` URLs against the page URL stored in
 //! `DomCtx`. If no URL is available the pass is a no-op.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 use url::Url;
 
 use crate::dom::walk::is_any_tag;

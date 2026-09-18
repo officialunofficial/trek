@@ -4,9 +4,9 @@
 )]
 //! Site-specific content extractors — trait surface, registry, and supporting types.
 //!
-//! This file is the Phase-0 foundation that lets Round-3 agents port Defuddle's
-//! 25 site extractors in parallel without touching shared infrastructure. It
-//! provides:
+//! This file is the Phase-0 foundation. It lets Round-3 agents port
+//! Defuddle's 25 site extractors in parallel. Agents do this without
+//! touching shared infrastructure. The file provides:
 //!
 //! - The [`Extractor`] trait — what every site extractor implements.
 //! - [`ExtractCtx`] — the read-only context passed to every extractor (URL,
@@ -25,9 +25,9 @@
 //! yet. Round-3 agents will register the actual extractors in
 //! `src/extractors/mod.rs::ExtractorRegistry::with_defaults`.
 
+use crate::dom::engine::NodeRef;
 use crate::types::ExtractedContent as LegacyExtractedContent;
 use async_trait::async_trait;
-use kuchikiki::NodeRef;
 use serde_json::Value;
 use thiserror::Error;
 use tracing::{debug, instrument};
@@ -150,8 +150,7 @@ impl RecursionDepth {
 
     /// Returns a new counter with `current + 1`, or
     /// [`ExtractError::RecursionLimit`] if that would exceed `max`.
-    #[allow(clippy::missing_const_for_fn)] // ExtractError::RecursionLimit isn't const-constructible
-    pub fn enter(self) -> Result<Self, ExtractError> {
+    pub const fn enter(self) -> Result<Self, ExtractError> {
         if self.current >= self.max {
             Err(ExtractError::RecursionLimit { max: self.max })
         } else {
@@ -387,9 +386,7 @@ impl ExtractedContent {
             title: self.title,
             author: self.author,
             published: self.published,
-            content: None,
             content_html: Some(self.content_html),
-            variables: None,
         }
     }
 }
@@ -422,14 +419,14 @@ pub trait Extractor: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Return true if this extractor wants to handle the document. Should
-    /// be cheap — a URL regex test plus maybe a small DOM probe via
-    /// `kuchikiki`. Heavy work belongs in [`Self::extract`].
+    /// be cheap — a URL regex test plus maybe a small DOM probe via the
+    /// DOM engine. Heavy work belongs in [`Self::extract`].
     fn can_extract(&self, ctx: &ExtractCtx<'_>) -> bool;
 
     /// Pull structured content from the parsed DOM tree.
     ///
-    /// `root` is the kuchikiki document root that the host parsed once,
-    /// up-front. Extractors must not mutate it.
+    /// `root` is the document root that the host parsed once, up-front.
+    /// Extractors must not mutate it.
     fn extract(
         &self,
         ctx: &ExtractCtx<'_>,
@@ -617,28 +614,34 @@ impl ExtractorRegistry {
     /// that prefer the async path.
     #[instrument(skip(self, ctx), fields(url = ?ctx.url))]
     pub fn select<'a>(&'a self, ctx: &ExtractCtx<'_>) -> Option<&'a dyn Extractor> {
-        for e in &self.extractors {
-            if e.prefers_async() {
-                continue;
-            }
-            if e.can_extract(ctx) {
-                debug!("selected extractor: {}", e.name());
-                return Some(e.as_ref());
-            }
-        }
-        None
+        self.select_by_async_preference(ctx, false)
     }
 
     /// Find the first async-preferred extractor that wants this document.
     /// Used by the (future) async parse path.
     #[instrument(skip(self, ctx), fields(url = ?ctx.url))]
     pub fn select_async<'a>(&'a self, ctx: &ExtractCtx<'_>) -> Option<&'a dyn Extractor> {
+        self.select_by_async_preference(ctx, true)
+    }
+
+    /// Shared scan behind [`Self::select`] and [`Self::select_async`]: find
+    /// the first extractor whose `prefers_async()` matches `want_async` and
+    /// that claims the document via `can_extract`.
+    fn select_by_async_preference<'a>(
+        &'a self,
+        ctx: &ExtractCtx<'_>,
+        want_async: bool,
+    ) -> Option<&'a dyn Extractor> {
         for e in &self.extractors {
-            if !e.prefers_async() {
+            if e.prefers_async() != want_async {
                 continue;
             }
             if e.can_extract(ctx) {
-                debug!("selected async extractor: {}", e.name());
+                debug!(
+                    "selected {}extractor: {}",
+                    if want_async { "async " } else { "" },
+                    e.name()
+                );
                 return Some(e.as_ref());
             }
         }
@@ -691,8 +694,7 @@ mod tests {
     use serde_json::json;
 
     fn parse_dom(html: &str) -> NodeRef {
-        use kuchikiki::traits::TendrilSink;
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     /// 1. ExtractCtx construction — defaults, builder methods.

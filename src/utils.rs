@@ -61,13 +61,13 @@ pub fn count_words(html: &str) -> usize {
         .count()
 }
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
-static TAG_PATTERN: Lazy<regex::Regex> =
-    Lazy::new(|| regex::Regex::new(r"<[^>]+>").expect("Invalid regex pattern"));
+static TAG_PATTERN: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"<[^>]+>").expect("Invalid regex pattern"));
 
-static WHITESPACE_PATTERN: Lazy<regex::Regex> =
-    Lazy::new(|| regex::Regex::new(r"\s+").expect("Invalid regex pattern"));
+static WHITESPACE_PATTERN: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"\s+").expect("Invalid regex pattern"));
 
 /// Strip HTML tags from text and normalize whitespace
 pub fn strip_html_tags(html: &str) -> String {

@@ -1,7 +1,7 @@
 //! HTML standardization functionality
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 use tracing::{debug, instrument};
 
 /// Standardize HTML content
@@ -36,7 +36,7 @@ pub fn standardize_content(html: &str, title: &str, debug: bool) -> String {
 }
 
 // `<iframe ... src="https://www.youtube.com/embed/VIDEO_ID?...">...</iframe>`
-static YOUTUBE_IFRAME_RE: Lazy<Regex> = Lazy::new(|| {
+static YOUTUBE_IFRAME_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?is)<iframe[^>]*\bsrc\s*=\s*["'](?:https?:)?//(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_\-]+)[^"']*["'][^>]*>\s*</iframe>"#,
     )
@@ -45,7 +45,7 @@ static YOUTUBE_IFRAME_RE: Lazy<Regex> = Lazy::new(|| {
 
 // `<iframe ... src="https://platform.twitter.com/embed/Tweet.html?id=...">` or
 // `<iframe ... src="https://twitter.com/{user}/status/{id}">`
-static TWITTER_IFRAME_RE: Lazy<Regex> = Lazy::new(|| {
+static TWITTER_IFRAME_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?is)<iframe[^>]*\bsrc\s*=\s*["'](?:https?:)?//(?:www\.)?(?:twitter|x)\.com/([A-Za-z0-9_]+)/status/(\d+)[^"']*["'][^>]*>\s*</iframe>"#,
     )
@@ -61,7 +61,7 @@ fn rewrite_embed_iframes(html: &str) -> String {
     let after_tw = TWITTER_IFRAME_RE.replace_all(&after_yt, |caps: &regex::Captures| {
         let user = &caps[1];
         let id = &caps[2];
-        format!(r#"<a href="https://twitter.com/{user}/status/{id}">Tweet by @{user}: {id}</a>"#,)
+        format!(r#"<a href="https://twitter.com/{user}/status/{id}">Tweet by @{user}: {id}</a>"#)
     });
     after_tw.into_owned()
 }
@@ -166,30 +166,9 @@ fn remove_trailing_headings(html: &str) -> String {
 fn flatten_wrapper_elements(html: &str) -> String {
     use lol_html::{RewriteStrSettings, element, rewrite_str};
 
-    debug!("Flattening wrapper elements");
-
-    // Carve out `<pre>...</pre>` regions before flattening so we don't
-    // unwrap structural divs that highlighters use as line containers.
-    let pre_re = regex::Regex::new(r"(?is)<pre[^>]*>.*?</pre>").expect("pre regex");
-    let mut pieces: Vec<(bool, String)> = Vec::new();
-    let mut cursor = 0usize;
-    for m in pre_re.find_iter(html) {
-        if m.start() > cursor {
-            pieces.push((false, html[cursor..m.start()].to_string()));
-        }
-        pieces.push((true, html[m.start()..m.end()].to_string()));
-        cursor = m.end();
-    }
-    if cursor < html.len() {
-        pieces.push((false, html[cursor..].to_string()));
-    }
-    if pieces.is_empty() {
-        pieces.push((false, html.to_string()));
-    }
-
     fn flatten_chunk(html: &str) -> String {
-        let settings = RewriteStrSettings {
-            element_content_handlers: vec![element!("div", |el| {
+        let settings =
+            RewriteStrSettings::new().append_element_content_handler(element!("div", |el| {
                 let has_semantic_attrs = el.get_attribute("role").is_some()
                     || el.get_attribute("aria-label").is_some()
                     || el.get_attribute("aria-hidden").is_some()
@@ -233,10 +212,29 @@ fn flatten_wrapper_elements(html: &str) -> String {
                 }
                 el.remove_and_keep_content();
                 Ok(())
-            })],
-            ..RewriteStrSettings::default()
-        };
+            }));
         rewrite_str(html, settings).unwrap_or_else(|_| html.to_string())
+    }
+
+    debug!("Flattening wrapper elements");
+
+    // Carve out `<pre>...</pre>` regions before flattening so we don't
+    // unwrap structural divs that highlighters use as line containers.
+    let pre_re = regex::Regex::new(r"(?is)<pre[^>]*>.*?</pre>").expect("pre regex");
+    let mut pieces: Vec<(bool, String)> = Vec::new();
+    let mut cursor = 0usize;
+    for m in pre_re.find_iter(html) {
+        if m.start() > cursor {
+            pieces.push((false, html[cursor..m.start()].to_string()));
+        }
+        pieces.push((true, html[m.start()..m.end()].to_string()));
+        cursor = m.end();
+    }
+    if cursor < html.len() {
+        pieces.push((false, html[cursor..].to_string()));
+    }
+    if pieces.is_empty() {
+        pieces.push((false, html.to_string()));
     }
 
     let mut out = String::with_capacity(html.len());

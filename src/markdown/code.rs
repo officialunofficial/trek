@@ -1,13 +1,13 @@
 //! Code-block language detection and content extraction.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use super::util::{attr, is_tag};
 
-static LANG_CLASS_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?:^|\s)(?:lang|language)-([A-Za-z0-9_+\-]+)").expect("regex"));
+static LANG_CLASS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|\s)(?:lang|language)-([A-Za-z0-9_+\-]+)").expect("regex"));
 
 /// Detect the programming language hint for a `<pre><code>` block.
 ///

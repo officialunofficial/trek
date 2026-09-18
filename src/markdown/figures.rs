@@ -1,6 +1,6 @@
 //! `<figure>`, `<picture>`, `srcset` handling.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use super::util::{attr, is_tag};
 
@@ -117,7 +117,7 @@ pub fn figure_is_content_wrapper(figure: &NodeRef) -> bool {
     let mut has_img = false;
     let mut has_p_outside_caption = false;
     for child in figure.descendants() {
-        if !child.as_element().is_some() {
+        if child.as_element().is_none() {
             continue;
         }
         if is_tag(&child, "img") {

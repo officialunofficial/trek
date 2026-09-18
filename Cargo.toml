@@ -1,6 +1,6 @@
 [package]
 name = "trek-rs"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["christopherwxyz"]
 description = "A web content extraction library that removes clutter from web pages"
@@ -15,12 +15,26 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # HTML parsing
-lol_html = "1.2"
-kuchikiki = "0.8"
-# Pulled in transitively by kuchikiki — declared explicitly so we can name
-# `QualName` / `LocalName` / `ns!` when constructing replacement elements in
-# DOM passes. No new wheel-dep cost (already in the lockfile).
-html5ever = "0.26"
+lol_html = "3.0"
+
+# `src/dom/engine` is a vendored HTML tree engine that replaces the old
+# `kuchikiki` dependency (see that module's doc comment for the full
+# migration history and license attribution). Pinned to the exact versions
+# kuchikiki-speedreader 0.8.9 itself built against, so the vendored
+# TreeSink/Element impls stay interoperable with the html5ever/selectors
+# pair they were written for.
+html5ever_engine = { package = "html5ever", version = "=0.35.0" }
+selectors = "=0.32.0"
+cssparser = "=0.35.0"
+tendril = "=0.4.3"
+markup5ever = "=0.35.0"
+# `selectors`' own `SelectorImpl::Identifier`/`LocalName`/`NamespaceUrl`
+# bounds require `PrecomputedHash`, and the vendored `Attributes` type
+# needs an order-preserving map to match the original kuchikiki crate's
+# attribute-order guarantees. Pinned to the versions kuchikiki-speedreader
+# itself pinned.
+indexmap = "=2.14.0"
+precomputed-hash = "=0.1.1"
 
 # Async trait support — required so the `Fetcher` trait works as a
 # trait object across both native and wasm32 targets.
@@ -56,7 +70,7 @@ once_cell = "1.19"
 # Error handling
 eyre = "0.6"
 color-eyre = "0.6"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # Logging and tracing
 tracing = "0.1"
@@ -68,7 +82,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Native-only HTTP fetcher used by the `fetcher-reqwest` feature.
 # This dependency is intentionally gated to non-wasm targets — wasm builds
 # get their fetcher from the host (Worker, browser) via a JS binding.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"], optional = true }
 
 [features]
 default = ["math-base"]
@@ -86,7 +100,7 @@ markdown-fixtures = []
 # code, no extra deps. Future tiers (`math-mathml-to-latex`,
 # `math-latex-to-mathml`, `math-full`) tracked separately.
 math-base = []
-# Print per-pass node-count deltas for the kuchikiki DOM pipeline.
+# Print per-pass node-count deltas for the DOM pass pipeline.
 # Off by default; enable with `cargo build --features tracing-passes`.
 tracing-passes = []
 

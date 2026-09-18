@@ -4,7 +4,7 @@
 //! turns and `.font-claude-response` (preferring its `.standard-markdown`
 //! body when present) for assistant turns.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::serialize;
 use crate::extractor::{
@@ -86,9 +86,8 @@ impl ConversationExtractor for ClaudeExtractor {
 
         for node_data in nodes {
             let node = node_data.as_node();
-            let element = match node.as_element() {
-                Some(el) => el,
-                None => continue,
+            let Some(element) = node.as_element() else {
+                continue;
             };
 
             let attrs = element.attributes.borrow();
@@ -162,10 +161,9 @@ fn serialize_inner(node: &NodeRef) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

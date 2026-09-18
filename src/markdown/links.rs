@@ -1,6 +1,6 @@
 //! Link / anchor handling for the Markdown converter.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use super::util::attr;
 
@@ -28,7 +28,7 @@ fn normalize_url(href: &str) -> String {
         return href.to_string();
     }
     // Find the path portion (after the first `/` past scheme://).
-    let scheme_end = href.find("://").map(|i| i + 3).unwrap_or(0);
+    let scheme_end = href.find("://").map_or(0, |i| i + 3);
     let after_scheme = &href[scheme_end..];
     // If there's no `/` after the host, add one. We must avoid clobbering
     // paths/queries/fragments.

@@ -3,18 +3,20 @@
 //! Port of `defuddle/content-boundary.ts::findContentStart`. Used by removal
 //! passes that want to scope themselves to "above the article body."
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::dom::walk::{
     closest_tag, count_words, get_attr, is_any_tag, link_text_length, text_content,
 };
 
 const PROSE_MIN_WORDS: usize = 7;
-static SENTENCE_PUNCT: Lazy<Regex> = Lazy::new(|| Regex::new(r"[.!?]").expect("valid regex"));
-static BYLINE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^by\s+\S").expect("valid regex"));
-static DATE_RE: Lazy<Regex> = Lazy::new(|| {
+static SENTENCE_PUNCT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[.!?]").expect("valid regex"));
+static BYLINE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^by\s+\S").expect("valid regex"));
+static DATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|\d{4}[-/]\d{1,2}[-/]\d{1,2}").expect("valid regex")
 });
 
@@ -32,14 +34,8 @@ fn find_title_element(root: &NodeRef, title: &str) -> Option<NodeRef> {
     if normalized.is_empty() {
         return None;
     }
-    for d in root.descendants() {
-        if is_any_tag(&d, &["h1", "h2"]) {
-            if normalize_text(&text_content(&d)) == normalized {
-                return Some(d);
-            }
-        }
-    }
-    None
+    root.descendants()
+        .find(|d| is_any_tag(d, &["h1", "h2"]) && normalize_text(&text_content(d)) == normalized)
 }
 
 fn is_prose_block(node: &NodeRef) -> bool {
@@ -75,7 +71,9 @@ fn is_prose_block(node: &NodeRef) -> bool {
     if DATE_RE.is_match(txt) && words < 20 {
         return false;
     }
-    if link_text_length(node) > (txt.len() as f64 * 0.7) as usize {
+    // Integer form of `link_text_length > txt.len() * 0.7`, avoiding a
+    // float round trip through `usize`.
+    if link_text_length(node) * 10 > txt.len() * 7 {
         return false;
     }
     if is_any_tag(node, &["div"]) && !node.descendants().any(|d| is_any_tag(&d, &["p"])) {
@@ -93,7 +91,7 @@ pub fn find_content_start(root: &NodeRef, title: &str) -> Option<NodeRef> {
     for d in root.descendants() {
         if !started {
             if let Some(t) = &title_el {
-                if std::ptr::eq(&*d, &**t) {
+                if std::ptr::eq(&raw const *d, &raw const **t) {
                     started = true;
                 }
             }

@@ -7,13 +7,13 @@
 use crate::CollectedData;
 use crate::types::{MetaTagItem, MiniAppEmbed, TrekMetadata};
 use crate::utils::decode_html_entities;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
+use std::sync::LazyLock;
 use tracing::{debug, instrument};
 
-static TITLE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<title[^>]*>(.*?)</title>").expect("Invalid regex"));
+static TITLE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<title[^>]*>(.*?)</title>").expect("Invalid regex"));
 
 /// Months for parseDateText.
 const MONTHS: &[(&str, &str)] = &[
@@ -86,7 +86,7 @@ impl MetadataExtractor {
         // `Installation Guide — Example Blog`.
         let doc_title = data.title.as_deref().map(decode_html_entities);
         let best_title = Self::get_best_title(
-            &doc_title,
+            doc_title.as_ref(),
             &data.schema_org_data,
             &data.meta_tags,
             &metadata.domain,
@@ -97,13 +97,13 @@ impl MetadataExtractor {
 
         // --- Author ---
         let author = Self::get_author(&data.schema_org_data, &data.meta_tags);
-        metadata.author = author.clone();
+        metadata.author.clone_from(&author);
 
         // --- Site (final composition) ---
         // Defuddle: siteName || detectedSiteName || authorAsSite || domain || ''
         // authorAsSite only when author has no comma (single-entity).
         let author_as_site = if !author.is_empty() && !author.contains(',') {
-            author.clone()
+            author
         } else {
             String::new()
         };
@@ -184,7 +184,7 @@ impl MetadataExtractor {
                 return true;
             }
         }
-        !s.chars().any(|c| c.is_alphanumeric())
+        !s.chars().any(char::is_alphanumeric)
     }
 
     /// First non-empty, non-placeholder candidate from a list of thunks.
@@ -230,7 +230,7 @@ impl MetadataExtractor {
         None
     }
 
-    /// Collect *all* matching contents (used for citation_author etc.).
+    /// Collect *all* matching contents (used for `citation_author` etc.).
     fn meta_names(meta_tags: &[MetaTagItem], name: &str) -> Vec<String> {
         meta_tags
             .iter()
@@ -261,8 +261,6 @@ impl MetadataExtractor {
     /// `publisher.name`, `WebSite.name`). Returns the first matching string
     /// (joined with ", " if many).
     fn schema_property(data: &[Value], path: &str) -> Option<String> {
-        let parts: Vec<&str> = path.split('.').collect();
-
         fn walk(node: &Value, props: &[&str], exact: bool, out: &mut Vec<String>) {
             if props.is_empty() {
                 match node {
@@ -305,16 +303,13 @@ impl MetadataExtractor {
                         }
                     }
                 }
-                Value::String(s) => {
-                    // path-into-string only matches when no remaining parts.
-                    if props.is_empty() {
-                        out.push(s.clone());
-                    }
-                }
+                // path-into-string only matches when no remaining parts.
+                Value::String(s) if props.is_empty() => out.push(s.clone()),
                 _ => {}
             }
         }
 
+        let parts: Vec<&str> = path.split('.').collect();
         let mut results: Vec<String> = Vec::new();
         for item in data {
             walk(item, &parts, true, &mut results);
@@ -374,7 +369,7 @@ impl MetadataExtractor {
     // -------------------------------------------------------------------
 
     fn get_best_title(
-        doc_title: &Option<String>,
+        doc_title: Option<&String>,
         schema_org_data: &[Value],
         meta_tags: &[MetaTagItem],
         domain: &str,
@@ -400,7 +395,7 @@ impl MetadataExtractor {
             Self::meta_name(meta_tags, "sailthru.title"),
             &mut candidates,
         );
-        push(doc_title.clone(), &mut candidates);
+        push(doc_title.cloned(), &mut candidates);
 
         if candidates.is_empty() {
             return String::new();
@@ -417,16 +412,12 @@ impl MetadataExtractor {
         } else {
             // strip leading subdomain stripped is unnecessary; defuddle uses
             // the full domain minus the TLD, then strips non-alphanumerics.
-            let stripped: String = {
-                if let Some(dot) = domain.rfind('.') {
-                    domain[..dot].to_lowercase()
-                } else {
-                    domain.to_lowercase()
-                }
-            };
+            let stripped: String = domain
+                .rfind('.')
+                .map_or_else(|| domain.to_lowercase(), |dot| domain[..dot].to_lowercase());
             stripped
                 .chars()
-                .filter(|c| c.is_ascii_alphanumeric())
+                .filter(char::is_ascii_alphanumeric)
                 .collect()
         };
 
@@ -452,8 +443,7 @@ impl MetadataExtractor {
             return true;
         }
         if !domain_norm.is_empty() {
-            let candidate_norm: String =
-                norm.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+            let candidate_norm: String = norm.chars().filter(char::is_ascii_alphanumeric).collect();
             if candidate_norm == *domain_norm {
                 return true;
             }
@@ -499,7 +489,7 @@ impl MetadataExtractor {
             let positions = Self::all_separator_positions(title, r"\s+[|\-–—/·]\s+");
             if !positions.is_empty() {
                 // suffix
-                let last = *positions.last().unwrap();
+                let last = *positions.last().expect("positions checked non-empty above");
                 let last_seg = title[last.0 + last.1..].trim().to_lowercase();
                 if !last_seg.is_empty() && site_lower.contains(&last_seg) {
                     let mut cut_index = last.0;
@@ -518,8 +508,7 @@ impl MetadataExtractor {
                 let prefix_seg = title[..first.0].trim().to_lowercase();
                 if !prefix_seg.is_empty() && site_lower.contains(&prefix_seg) {
                     let mut cut_index = first.0 + first.1;
-                    for i in 1..positions.len() {
-                        let p = positions[i];
+                    for p in positions.iter().skip(1) {
                         let segment = title[cut_index..p.0].trim();
                         if Self::word_count(segment) > 3 {
                             break;
@@ -548,9 +537,8 @@ impl MetadataExtractor {
     }
 
     fn all_separator_positions(title: &str, pattern: &str) -> Vec<(usize, usize)> {
-        let re = match Regex::new(pattern) {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
+        let Ok(re) = Regex::new(pattern) else {
+            return Vec::new();
         };
         re.find_iter(title)
             .map(|m| (m.start(), m.end() - m.start()))
@@ -569,7 +557,7 @@ impl MetadataExtractor {
         }
 
         // suffix
-        let last = *positions.last().unwrap();
+        let last = *positions.last().expect("positions checked non-empty above");
         let suffix_title = title[..last.0].trim().to_string();
         let suffix_site = title[last.0 + last.1..].trim().to_string();
         if guard(
@@ -637,9 +625,7 @@ impl MetadataExtractor {
             let parts: Vec<String> = citation
                 .iter()
                 .map(|s| {
-                    if !s.contains(',') {
-                        s.trim().to_string()
-                    } else {
+                    if s.contains(',') {
                         // Convert "Last, First" → "First Last"
                         let parts: Vec<&str> = s.splitn(2, ',').collect();
                         if parts.len() == 2 {
@@ -647,6 +633,8 @@ impl MetadataExtractor {
                         } else {
                             s.trim().to_string()
                         }
+                    } else {
+                        s.trim().to_string()
                     }
                 })
                 .collect();
@@ -680,12 +668,12 @@ impl MetadataExtractor {
 
     fn clean_author_string(input: &str) -> String {
         // Static regexes for performance.
-        static URL_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"(?i)\(?\s*https?://\S+\s*\)?").expect("bad URL regex"));
-        static AND_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"(?i),?\s+and\s+").expect("bad AND regex"));
-        static TRAILING_SEP_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"\s*[-–—|]\s*$").expect("bad TRAILING regex"));
+        static URL_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"(?i)\(?\s*https?://\S+\s*\)?").expect("bad URL regex"));
+        static AND_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"(?i),?\s+and\s+").expect("bad AND regex"));
+        static TRAILING_SEP_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\s*[-–—|]\s*$").expect("bad TRAILING regex"));
 
         let mut s = input.to_string();
         // Strip "By " prefix (case-insensitive).
@@ -771,8 +759,12 @@ impl MetadataExtractor {
     #[allow(dead_code)]
     pub fn parse_date_text(text: &str) -> Option<String> {
         // "26 February 2025" or "Wednesday, 26 February 2025"
-        static DAY_FIRST: Lazy<Regex> = Lazy::new(|| {
+        static DAY_FIRST: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"(?i)\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b").expect("bad regex")
+        });
+        // "February 26, 2025"
+        static MONTH_FIRST: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(?i)\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b").expect("bad regex")
         });
         if let Some(c) = DAY_FIRST.captures(text) {
             let day = format!("{:0>2}", &c[1]);
@@ -784,10 +776,6 @@ impl MetadataExtractor {
             let year = &c[3];
             return Some(format!("{year}-{month}-{day}T00:00:00+00:00"));
         }
-        // "February 26, 2025"
-        static MONTH_FIRST: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"(?i)\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b").expect("bad regex")
-        });
         if let Some(c) = MONTH_FIRST.captures(text) {
             let month_name = c[1].to_lowercase();
             let month = MONTHS
@@ -921,8 +909,10 @@ mod tests {
 
     #[test]
     fn test_detected_site_from_title_strip() {
-        let mut data = CollectedData::default();
-        data.title = Some("Article Title - Example".to_string());
+        let data = CollectedData {
+            title: Some("Article Title - Example".to_string()),
+            ..Default::default()
+        };
         let metadata =
             MetadataExtractor::extract_from_collected_data(&data, Some("https://example.org/page"));
         // After heuristic strip: title becomes "Article Title" and detected

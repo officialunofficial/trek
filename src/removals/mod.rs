@@ -1,4 +1,4 @@
-//! kuchikiki-based removal passes (DOM-mutating).
+//! DOM-based removal passes (DOM-mutating).
 
 use crate::dom::{DomCtx, DomPass};
 
@@ -24,7 +24,7 @@ pub fn post_passes() -> Vec<Box<dyn DomPass>> {
     ]
 }
 
-pub fn run_pre(root: &kuchikiki::NodeRef, ctx: &DomCtx) {
+pub fn run_pre(root: &crate::dom::engine::NodeRef, ctx: &DomCtx) {
     for p in pre_passes() {
         #[cfg(feature = "tracing-passes")]
         let before = root.descendants().count();
@@ -43,7 +43,7 @@ pub fn run_pre(root: &kuchikiki::NodeRef, ctx: &DomCtx) {
     }
 }
 
-pub fn run_post(root: &kuchikiki::NodeRef, ctx: &DomCtx) {
+pub fn run_post(root: &crate::dom::engine::NodeRef, ctx: &DomCtx) {
     for p in post_passes() {
         #[cfg(feature = "tracing-passes")]
         let before = root.descendants().count();

@@ -5,8 +5,8 @@
 //! [`crate::extractor::ExtractorRegistry`]: more-specific matchers register
 //! before more-general ones, with the catch-all `BbcodeDataExtractor` last.
 
+use crate::dom::engine::NodeRef;
 use crate::extractor::ExtractorRegistry;
-use kuchikiki::NodeRef;
 
 // AGENT-P2B: social-timeline extractors.
 mod bluesky;
@@ -138,10 +138,10 @@ pub(crate) fn find_first_in(parent: &NodeRef, selector: &str) -> Option<NodeRef>
 
 /// All matches for `selector` under `root`.
 pub(crate) fn select_all(root: &NodeRef, selector: &str) -> Vec<NodeRef> {
-    match root.select(selector) {
-        Ok(iter) => iter.map(|d| d.as_node().clone()).collect(),
-        Err(_) => Vec::new(),
-    }
+    root.select(selector).map_or_else(
+        |()| Vec::new(),
+        |iter| iter.map(|d| d.as_node().clone()).collect(),
+    )
 }
 
 /// Detach every matching element from the tree.
@@ -188,19 +188,6 @@ pub(crate) fn serialize_node(node: &NodeRef) -> String {
 /// Read a `<meta property="..." content="...">` tag.
 pub(crate) fn meta_property(root: &NodeRef, prop: &str) -> Option<String> {
     let nodes = select_all(root, &format!("meta[property=\"{prop}\"]"));
-    for n in nodes {
-        if let Some(v) = elem_attr(&n, "content") {
-            if !v.trim().is_empty() {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
-/// Read a `<meta name="..." content="...">` tag.
-pub(crate) fn meta_name(root: &NodeRef, name: &str) -> Option<String> {
-    let nodes = select_all(root, &format!("meta[name=\"{name}\"]"));
     for n in nodes {
         if let Some(v) = elem_attr(&n, "content") {
             if !v.trim().is_empty() {

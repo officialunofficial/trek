@@ -7,16 +7,16 @@
 //! comes from a `<link itemprop="name">` next to the channel link.
 //!
 //! Async path (when an [`crate::extractor::Fetcher`] is provided): fetches
-//! transcript JSON from YouTube's unofficial InnerTube `next` endpoint and
+//! transcript JSON from `YouTube`'s unofficial `InnerTube` `next` endpoint and
 //! turns the captionTracks XML into a flat HTML transcript.
 //!
 //! Trek's [`Extractor`] trait is currently sync-only — `prefers_async = true`
-//! marks YouTube for the future async path. The sync `extract` falls back
+//! marks `YouTube` for the future async path. The sync `extract` falls back
 //! to the description-only output, and only if the fetcher has been wired
 //! into the host pipeline does the transcript actually get populated.
 
+use crate::dom::engine::NodeRef;
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
-use kuchikiki::NodeRef;
 use std::sync::OnceLock;
 
 /// Site extractor for `youtube.com/watch?v=...` and `youtu.be/<id>` URLs.
@@ -74,7 +74,9 @@ impl Extractor for YoutubeExtractor {
         let mut content_html = String::new();
         // Embedded player.
         if !video_id.is_empty() {
-            content_html.push_str(&format!(
+            use std::fmt::Write as _;
+            let _ = write!(
+                content_html,
                 concat!(
                     r#"<iframe width="560" height="315" "#,
                     r#"src="https://www.youtube.com/embed/{}" "#,
@@ -85,7 +87,7 @@ impl Extractor for YoutubeExtractor {
                     r#"allowfullscreen></iframe>"#
                 ),
                 video_id
-            ));
+            );
         }
         // Description.
         if let Some(desc) = &description {
@@ -276,7 +278,7 @@ fn extract_visible_chapters(root: &NodeRef) -> Vec<Chapter> {
 // Async transcript fetch (best-effort sync wrapper)
 // ---------------------------------------------------------------------------
 
-fn try_fetch_transcript(_ctx: &ExtractCtx<'_>, _video_id: &str) -> Option<String> {
+const fn try_fetch_transcript(_ctx: &ExtractCtx<'_>, _video_id: &str) -> Option<String> {
     // Trek's `Extractor::extract` is synchronous; an async fetcher cannot
     // be driven without a runtime. Real transcript fetching will move to
     // `extract_async` in a follow-up phase. For now we return None so the
@@ -290,7 +292,7 @@ fn try_fetch_transcript(_ctx: &ExtractCtx<'_>, _video_id: &str) -> Option<String
     None
 }
 
-/// Parse an InnerTube player response and turn the first English caption
+/// Parse an `InnerTube` player response and turn the first English caption
 /// track XML into a flat HTML `<div class="transcript">...</div>`.
 ///
 /// Public for unit tests with a mock fetcher; the real call path goes
@@ -324,17 +326,17 @@ pub fn parse_transcript_response(json_body: &str) -> Option<String> {
     None
 }
 
-/// Parse YouTube srv3 / timed-text XML into transcript HTML.
+/// Parse `YouTube` srv3 / timed-text XML into transcript HTML.
 ///
 /// Public for unit testing.
 #[must_use]
 pub fn parse_caption_xml(xml: &str) -> Option<String> {
     static P_RE: OnceLock<regex::Regex> = OnceLock::new();
     static TEXT_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
     let p_re = P_RE.get_or_init(|| regex::Regex::new(r"(?s)<p\s+[^>]*>(.*?)</p>").expect("re"));
     let text_re =
-        TEXT_RE.get_or_init(|| regex::Regex::new(r#"(?s)<text\s+[^>]*>(.*?)</text>"#).expect("re"));
-    static TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
+        TEXT_RE.get_or_init(|| regex::Regex::new(r"(?s)<text\s+[^>]*>(.*?)</text>").expect("re"));
     let tag_re = TAG_RE.get_or_init(|| regex::Regex::new(r"<[^>]+>").expect("re"));
 
     let mut lines: Vec<String> = Vec::new();
@@ -388,13 +390,12 @@ mod tests {
     use super::*;
     use crate::extractor::{FetchError, Fetcher};
     use async_trait::async_trait;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
-    fn ctx<'a>(url: &'a str) -> ExtractCtx<'a> {
+    fn ctx(url: &str) -> ExtractCtx<'_> {
         ExtractCtx::new(Some(url), &[])
     }
 

@@ -1,6 +1,6 @@
 # Trek Documentation
 
-Trek is a high-performance web content extraction library written in Rust that compiles to WebAssembly. It provides an alternative to Mozilla Readability with enhanced mobile-awareness and site-specific extraction capabilities.
+Trek is a library for content extraction from the web. Trek is written in Rust and compiles to WebAssembly. It provides an alternative to Mozilla Readability with enhanced mobile-awareness and site-specific extraction capabilities.
 
 ## Table of Contents
 

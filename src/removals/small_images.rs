@@ -1,8 +1,8 @@
 //! Remove tiny images (icons, tracking pixels, base64 placeholders).
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::dom::walk::{closest_tag, get_attr, is_any_tag};
 use crate::dom::{DomCtx, DomPass};
@@ -11,18 +11,18 @@ pub struct SmallImages;
 
 const MIN_DIMENSION: u32 = 33;
 
-static STYLE_W: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)width\s*:\s*(\d+)").expect("valid regex"));
-static STYLE_H: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)height\s*:\s*(\d+)").expect("valid regex"));
+static STYLE_W: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)width\s*:\s*(\d+)").expect("valid regex"));
+static STYLE_H: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)height\s*:\s*(\d+)").expect("valid regex"));
 
 fn parse_u32(s: &str) -> u32 {
     s.parse::<u32>().unwrap_or(0)
 }
 
 fn dimension_from_attrs(node: &NodeRef) -> (u32, u32) {
-    let w = get_attr(node, "width").map(|v| parse_u32(&v)).unwrap_or(0);
-    let h = get_attr(node, "height").map(|v| parse_u32(&v)).unwrap_or(0);
+    let w = get_attr(node, "width").map_or(0, |v| parse_u32(&v));
+    let h = get_attr(node, "height").map_or(0, |v| parse_u32(&v));
     (w, h)
 }
 
@@ -31,14 +31,27 @@ fn dimension_from_style(node: &NodeRef) -> (u32, u32) {
     let w = STYLE_W
         .captures(&style)
         .and_then(|c| c.get(1))
-        .map(|m| parse_u32(m.as_str()))
-        .unwrap_or(0);
+        .map_or(0, |m| parse_u32(m.as_str()));
     let h = STYLE_H
         .captures(&style)
         .and_then(|c| c.get(1))
-        .map(|m| parse_u32(m.as_str()))
-        .unwrap_or(0);
+        .map_or(0, |m| parse_u32(m.as_str()));
     (w, h)
+}
+
+/// Converts a parsed SVG `viewBox` dimension to `u32`, clamping to a safe,
+/// non-negative range first so the final cast cannot truncate or flip sign.
+fn f64_to_u32(v: f64) -> u32 {
+    let rounded = v.round();
+    if !rounded.is_finite() || rounded <= 0.0 {
+        return 0;
+    }
+    let clamped = rounded.min(f64::from(u32::MAX));
+    // Safe: `clamped` is finite, non-negative, and at most `u32::MAX` here.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    {
+        clamped as u32
+    }
 }
 
 fn dimension_from_viewbox(node: &NodeRef) -> (u32, u32) {
@@ -51,8 +64,8 @@ fn dimension_from_viewbox(node: &NodeRef) -> (u32, u32) {
         .filter(|s| !s.is_empty())
         .collect();
     if parts.len() == 4 {
-        let w = parts[2].parse::<f64>().unwrap_or(0.0).round() as u32;
-        let h = parts[3].parse::<f64>().unwrap_or(0.0).round() as u32;
+        let w = f64_to_u32(parts[2].parse::<f64>().unwrap_or(0.0));
+        let h = f64_to_u32(parts[3].parse::<f64>().unwrap_or(0.0));
         return (w, h);
     }
     (0, 0)
@@ -61,7 +74,7 @@ fn dimension_from_viewbox(node: &NodeRef) -> (u32, u32) {
 fn looks_like_math(node: &NodeRef) -> bool {
     if let Some(alt) = get_attr(node, "alt") {
         let a = alt.to_ascii_lowercase();
-        if a.contains("\\(") || a.contains("\\[") || a.starts_with("$") || a.contains("latex") {
+        if a.contains("\\(") || a.contains("\\[") || a.starts_with('$') || a.contains("latex") {
             return true;
         }
     }
@@ -106,15 +119,16 @@ impl DomPass for SmallImages {
             }
 
             // Skip the sole image inside a <figure> (probably the figure subject).
-            if is_any_tag(&d, &["img"]) && closest_tag(&d, &["figure"]).is_some() {
-                // Only skip when the figure has exactly one image.
-                let figure = closest_tag(&d, &["figure"]).unwrap();
-                let img_count = figure
-                    .descendants()
-                    .filter(|x| is_any_tag(x, &["img"]))
-                    .count();
-                if img_count == 1 {
-                    continue;
+            if is_any_tag(&d, &["img"]) {
+                if let Some(figure) = closest_tag(&d, &["figure"]) {
+                    // Only skip when the figure has exactly one image.
+                    let img_count = figure
+                        .descendants()
+                        .filter(|x| is_any_tag(x, &["img"]))
+                        .count();
+                    if img_count == 1 {
+                        continue;
+                    }
                 }
             }
 
@@ -142,16 +156,17 @@ impl DomPass for SmallImages {
                         "data-original",
                     ]
                     .iter()
-                    .any(|k| get_attr(&d, k).map(|v| !v.is_empty()).unwrap_or(false));
+                    .any(|k| get_attr(&d, k).is_some_and(|v| !v.is_empty()));
                     if src.is_empty() && !has_alt_src {
                         to_remove.push(d.clone());
                         continue;
                     }
-                    if !has_alt_src && is_base64_placeholder(&src) {
-                        if closest_tag(&d, &["picture"]).is_none() {
-                            to_remove.push(d.clone());
-                            continue;
-                        }
+                    if !has_alt_src
+                        && is_base64_placeholder(&src)
+                        && closest_tag(&d, &["picture"]).is_none()
+                    {
+                        to_remove.push(d.clone());
+                        continue;
                     }
                 }
                 continue;

@@ -20,7 +20,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,13 +28,13 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Cache cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -44,10 +44,13 @@ jobs:
 
       - name: Install wasm-pack
         run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- --version 0.15.0
+
+      - name: Install just
+        uses: extractions/setup-just@v4
 
       - name: Build WASM package
-        run: make wasm-build
+        run: just wasm-build
 
       - name: Configure npm
         run: |

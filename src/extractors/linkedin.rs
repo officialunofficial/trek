@@ -5,17 +5,18 @@
 // commentary text plus images/video poster. Reposts (quoted-post nests)
 // are stripped to avoid duplicate content.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 
-static LINKEDIN_URL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^https?://(?:[a-z]+\.)?linkedin\.com/").expect("valid regex"));
+static LINKEDIN_URL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^https?://(?:[a-z]+\.)?linkedin\.com/").expect("valid regex")
+});
 
-/// LinkedIn extractor.
+/// `LinkedIn` extractor.
 pub struct LinkedInExtractor;
 
 impl LinkedInExtractor {
@@ -29,7 +30,9 @@ impl LinkedInExtractor {
         url.is_some_and(|u| LINKEDIN_URL.is_match(u))
     }
 
-    fn post_article(root: &NodeRef) -> Option<kuchikiki::NodeDataRef<kuchikiki::ElementData>> {
+    fn post_article(
+        root: &NodeRef,
+    ) -> Option<crate::dom::engine::NodeDataRef<crate::dom::engine::ElementData>> {
         root.select_first(r#"[role="article"].feed-shared-update-v2"#)
             .ok()
     }
@@ -43,8 +46,7 @@ impl LinkedInExtractor {
                 let attrs = el.attributes.borrow();
                 if attrs
                     .get("class")
-                    .map(|c| c.split_whitespace().any(|cl| cl == "visually-hidden"))
-                    .unwrap_or(false)
+                    .is_some_and(|c| c.split_whitespace().any(|cl| cl == "visually-hidden"))
                 {
                     continue;
                 }
@@ -101,17 +103,11 @@ impl Extractor for LinkedInExtractor {
             .flatten()
             .find_map(|m| {
                 let in_quote = m.as_node().ancestors().any(|a| {
-                    a.as_element()
-                        .map(|el| {
-                            el.attributes
-                                .borrow()
-                                .get("class")
-                                .map(|c| {
-                                    c.contains("feed-shared-update-v2__update-content-wrapper")
-                                })
-                                .unwrap_or(false)
+                    a.as_element().is_some_and(|el| {
+                        el.attributes.borrow().get("class").is_some_and(|c| {
+                            c.contains("feed-shared-update-v2__update-content-wrapper")
                         })
-                        .unwrap_or(false)
+                    })
                 });
                 if in_quote {
                     None
@@ -157,10 +153,9 @@ impl Extractor for LinkedInExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

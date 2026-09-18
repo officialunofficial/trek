@@ -1,10 +1,10 @@
-//! ChatGPT conversation extractor.
+//! `ChatGPT` conversation extractor.
 //!
 //! Matches `chatgpt.com` and `chat.openai.com` URLs and walks
 //! `[data-message-author-role]` elements to collect each turn in the
 //! conversation as a [`ConversationMessage`].
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::serialize;
 use crate::extractor::{
@@ -12,7 +12,7 @@ use crate::extractor::{
     Extractor, render_conversation,
 };
 
-/// Conversation extractor for ChatGPT.
+/// Conversation extractor for `ChatGPT`.
 pub struct ChatGptExtractor;
 
 impl ChatGptExtractor {
@@ -29,7 +29,7 @@ impl Default for ChatGptExtractor {
     }
 }
 
-/// Best-effort host match for ChatGPT URLs.
+/// Best-effort host match for `ChatGPT` URLs.
 fn url_matches_chatgpt(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url) else {
         return false;
@@ -79,9 +79,8 @@ impl ConversationExtractor for ChatGptExtractor {
             .map_err(|()| ExtractError::Dom("invalid selector".to_string()))?;
         for node_data in nodes {
             let node = node_data.as_node();
-            let element = match node.as_element() {
-                Some(el) => el,
-                None => continue,
+            let Some(element) = node.as_element() else {
+                continue;
             };
             let attrs = element.attributes.borrow();
             let role = attrs
@@ -152,15 +151,14 @@ fn serialize_inner(node: &NodeRef) -> String {
 /// Capitalize the first character of a string.
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
+    chars.next().map_or_else(String::new, |c| {
+        c.to_uppercase().collect::<String>() + chars.as_str()
+    })
 }
 
 /// Derive the title from the first user message's first line, capped at
 /// ~80 characters with an ellipsis.
-pub(crate) fn title_from_first_user_message(messages: &[ConversationMessage]) -> Option<String> {
+pub fn title_from_first_user_message(messages: &[ConversationMessage]) -> Option<String> {
     let first = messages.iter().find(|m| {
         m.author
             .as_deref()
@@ -174,15 +172,14 @@ pub(crate) fn title_from_first_user_message(messages: &[ConversationMessage]) ->
     Some(truncate_with_ellipsis(first_line, 80))
 }
 
-/// Crude HTML-to-text using kuchikiki to keep us out of regex hell.
-pub(crate) fn strip_html_to_text(html: &str) -> String {
-    use kuchikiki::traits::TendrilSink;
-    let doc = kuchikiki::parse_html().one(html);
+/// Crude HTML-to-text using the DOM engine to keep us out of regex hell.
+pub fn strip_html_to_text(html: &str) -> String {
+    let doc = crate::dom::parse_html(html);
     doc.text_contents()
 }
 
 /// Truncate `s` to at most `max` characters, adding an ellipsis if cut.
-pub(crate) fn truncate_with_ellipsis(s: &str, max: usize) -> String {
+pub fn truncate_with_ellipsis(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
     }
@@ -195,10 +192,9 @@ pub(crate) fn truncate_with_ellipsis(s: &str, max: usize) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

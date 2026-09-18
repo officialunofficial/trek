@@ -1,4 +1,4 @@
-//! LeetCode extractor — port of Defuddle's `leetcode.ts`.
+//! `LeetCode` extractor — port of Defuddle's `leetcode.ts`.
 //!
 //! Triggers on `leetcode.com/problems/...`. Best-effort SSR extraction:
 //! reads `[data-track-load="description_content"]` if present and strips
@@ -6,14 +6,14 @@
 //! trailing `- LeetCode` suffix.
 // AGENT-P2C: Phase 2C dev extractor.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 use crate::extractors::{
     find_first, host_matches_exact, meta_property, remove_all, serialize_node,
 };
 
-/// LeetCode (`leetcode.com`) extractor.
+/// `LeetCode` (`leetcode.com`) extractor.
 pub struct LeetCodeExtractor;
 
 impl LeetCodeExtractor {

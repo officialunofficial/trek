@@ -6,7 +6,7 @@
 // treat the OP (`.topic-post.topic-owner`) as the post and remaining
 // `.topic-post` siblings as replies.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
@@ -30,8 +30,7 @@ impl DiscourseExtractor {
         let attrs = meta.attributes.borrow();
         attrs
             .get("content")
-            .map(|c| c.starts_with("Discourse"))
-            .unwrap_or(false)
+            .is_some_and(|c| c.starts_with("Discourse"))
     }
 
     fn has_topic_post(root: &NodeRef) -> bool {
@@ -51,7 +50,7 @@ impl DiscourseExtractor {
     fn site_name(root: &NodeRef) -> Option<String> {
         let m = root.select_first(r#"meta[property="og:site_name"]"#).ok()?;
         let attrs = m.attributes.borrow();
-        attrs.get("content").map(|s| s.to_string())
+        attrs.get("content").map(std::string::ToString::to_string)
     }
 
     fn post_text(post: &NodeRef) -> String {
@@ -66,7 +65,7 @@ impl DiscourseExtractor {
         let attrs = link.attributes.borrow();
         attrs
             .get("data-user-card")
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .filter(|s| !s.is_empty())
             .or_else(|| {
                 drop(attrs);
@@ -94,12 +93,7 @@ impl Extractor for DiscourseExtractor {
         // Without root we'd over-claim; gate on URL hint to avoid stealing
         // arbitrary pages. Real probe in `extract`.
         ctx.url
-            .map(|u| {
-                regex::Regex::new(r"/t/[^/]+/\d+")
-                    .map(|re| re.is_match(u))
-                    .unwrap_or(false)
-            })
-            .unwrap_or(false)
+            .is_some_and(|u| regex::Regex::new(r"/t/[^/]+/\d+").is_ok_and(|re| re.is_match(u)))
     }
 
     fn extract(
@@ -188,10 +182,9 @@ impl ConversationExtractor for DiscourseExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

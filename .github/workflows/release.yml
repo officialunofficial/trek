@@ -23,7 +23,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -32,7 +32,10 @@ jobs:
 
       - name: Install wasm-pack
         run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- --version 0.15.0
+
+      - name: Install just
+        uses: extractions/setup-just@v4
 
       - name: Build release artifacts
         run: |
@@ -40,7 +43,7 @@ jobs:
           cargo build --release
           
           # Build WASM release
-          make wasm-build
+          just wasm-build
           
           # Create archives
           mkdir -p artifacts
@@ -58,7 +61,7 @@ jobs:
             README.md
 
       - name: Upload release artifacts
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.tar.gz

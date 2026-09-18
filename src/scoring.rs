@@ -3,23 +3,24 @@
 #![allow(clippy::cast_precision_loss)]
 
 use crate::constants::{CONTENT_INDICATORS, NAVIGATION_INDICATORS, NON_CONTENT_PATTERNS};
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 use tracing::{debug, instrument};
 
 // Regex patterns
-static DATE_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static DATE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b")
         .expect("Invalid regex")
 });
-static AUTHOR_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static AUTHOR_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:by|written by|author:)\s+[A-Za-z\s]+\b").expect("Invalid regex")
 });
-static PARAGRAPH_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<p[^>]*>.*?</p>").expect("Invalid regex"));
-static LINK_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<a[^>]*>.*?</a>").expect("Invalid regex"));
-static IMAGE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"<img[^>]*>").expect("Invalid regex"));
+static PARAGRAPH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<p[^>]*>.*?</p>").expect("Invalid regex"));
+static LINK_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<a[^>]*>.*?</a>").expect("Invalid regex"));
+static IMAGE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<img[^>]*>").expect("Invalid regex"));
 
 /// Score for content elements
 #[derive(Debug, Clone)]
@@ -46,7 +47,7 @@ impl ContentScorer {
         let paragraphs = PARAGRAPH_PATTERN.find_iter(text).count();
         let paragraphs_f32 = paragraphs as f32;
         if paragraphs > 0 {
-            score += paragraphs_f32 * 5.0;
+            score = paragraphs_f32.mul_add(5.0, score);
         }
 
         // Link density penalty
@@ -62,7 +63,7 @@ impl ContentScorer {
         // Image bonus
         let images = IMAGE_PATTERN.find_iter(text).count();
         let images_f32 = images as f32;
-        score += images_f32 * 3.0;
+        score = images_f32.mul_add(3.0, score);
 
         // Content indicators bonus
         for indicator in CONTENT_INDICATORS {

@@ -8,17 +8,17 @@
 // extractor must return `ExtractError::Failed` so the host falls back to
 // generic extraction.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 
 /// AGENT-P2B: matches both `/status/<id>` and `/article/<id>` paths so the
-/// async fetch can target either FxTwitter endpoint. Defuddle does the same
+/// async fetch can target either `FxTwitter` endpoint. Defuddle does the same
 /// `/(status|article)/\d+/` test in `canExtractAsync`.
-static X_OEMBED_URL: Lazy<Regex> = Lazy::new(|| {
+static X_OEMBED_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^https?://(?:www\.|mobile\.)?(?:x|twitter)\.com/[A-Za-z0-9_]{1,15}/(?:status|article)/\d+")
         .expect("valid regex")
 });
@@ -81,10 +81,9 @@ impl Extractor for XOembedExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

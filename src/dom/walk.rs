@@ -1,11 +1,11 @@
-//! Tree-walking helpers for `kuchikiki` `NodeRef`s.
+//! Tree-walking helpers for the DOM engine's `NodeRef`s.
 //!
 //! These primitives are used across the standardize/removal passes; they
 //! intentionally have no public API guarantees other than what the modules
 //! that consume them rely on.
 
-use html5ever::{LocalName, QualName, namespace_url, ns};
-use kuchikiki::{Attribute, ExpandedName, NodeRef};
+use crate::dom::engine::{Attribute, ExpandedName, NodeRef};
+use html5ever_engine::{LocalName, QualName, ns};
 
 /// Build a list of (`ExpandedName`, `Attribute`) suitable for
 /// `NodeRef::new_element` from a slice of (name, value) pairs.
@@ -110,13 +110,13 @@ pub fn element_children(node: &NodeRef) -> Vec<NodeRef> {
 
 /// All descendants, deepest-first (post-order).
 pub fn descendants_post_order(root: &NodeRef) -> Vec<NodeRef> {
-    let mut out = Vec::new();
     fn visit(n: &NodeRef, out: &mut Vec<NodeRef>) {
         for c in n.children() {
             visit(&c, out);
         }
         out.push(n.clone());
     }
+    let mut out = Vec::new();
     for c in root.children() {
         visit(&c, &mut out);
     }
@@ -138,7 +138,7 @@ pub fn detach(node: &NodeRef) {
 pub fn contains(ancestor: &NodeRef, el: &NodeRef) -> bool {
     let mut cur = el.parent();
     while let Some(p) = cur {
-        if std::ptr::eq(&*p, &**ancestor) {
+        if std::ptr::eq(&raw const *p, &raw const **ancestor) {
             return true;
         }
         cur = p.parent();
@@ -182,7 +182,7 @@ pub fn unwrap(node: &NodeRef) {
 /// element children that are themselves non-empty content.
 #[must_use]
 pub fn is_visually_empty(node: &NodeRef) -> bool {
-    if !node.as_element().is_some() {
+    if node.as_element().is_none() {
         return false;
     }
     for d in node.descendants() {

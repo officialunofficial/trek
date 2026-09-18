@@ -32,7 +32,7 @@ const SEMANTIC_CLASS_HINTS: &[&str] = &[
     "footnotes",
 ];
 
-fn has_semantic_attrs(node: &kuchikiki::NodeRef) -> bool {
+fn has_semantic_attrs(node: &crate::dom::engine::NodeRef) -> bool {
     if get_attr(node, "role").is_some()
         || get_attr(node, "aria-label").is_some()
         || get_attr(node, "itemscope").is_some()
@@ -52,7 +52,7 @@ fn has_semantic_attrs(node: &kuchikiki::NodeRef) -> bool {
     false
 }
 
-fn is_unwrappable_wrapper(node: &kuchikiki::NodeRef) -> bool {
+fn is_unwrappable_wrapper(node: &crate::dom::engine::NodeRef) -> bool {
     // Only flatten generic structural wrappers — never a `body`, `html`, or
     // `figure`/`pre`/`code`/etc.
     let Some(name) = tag_name(node) else {
@@ -135,7 +135,7 @@ impl DomPass for FlattenWrappers {
         "flatten_wrappers"
     }
 
-    fn run(&self, root: &kuchikiki::NodeRef, _ctx: &DomCtx) {
+    fn run(&self, root: &crate::dom::engine::NodeRef, _ctx: &DomCtx) {
         // Run a few iterations — flattening one wrapper can expose another.
         for _ in 0..6 {
             let mut changed = false;

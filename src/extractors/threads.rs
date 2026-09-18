@@ -6,18 +6,18 @@
 // `/@user` links). We probe both and walk `[data-pressable-container]`
 // post containers to build the message list.
 
-use kuchikiki::iter::NodeIterator;
+use crate::dom::engine::traits::NodeIterator;
 
-use kuchikiki::{ElementData, NodeRef};
-use once_cell::sync::Lazy;
+use crate::dom::engine::{ElementData, NodeRef};
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{
     ConversationExtractor, ConversationMessage, ExtractCtx, ExtractError, ExtractedContent,
     Extractor, render_conversation,
 };
 
-static THREADS_URL: Lazy<Regex> = Lazy::new(|| {
+static THREADS_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^https?://(?:www\.)?threads\.(?:net|com)/").expect("valid regex")
 });
 
@@ -36,8 +36,8 @@ impl ThreadsExtractor {
     }
 
     fn has_pagelets(root: &NodeRef) -> bool {
-        // We can't use attribute-prefix selectors directly with kuchikiki's
-        // selector parser ([attr^=...] *is* supported, so use it).
+        // We can't use attribute-prefix selectors directly with the DOM
+        // engine's selector parser ([attr^=...] *is* supported, so use it).
         root.select_first(r#"[data-pagelet^="threads_post_page_"]"#)
             .is_ok()
     }
@@ -139,7 +139,7 @@ impl ConversationExtractor for ThreadsExtractor {
         let mut messages = Vec::new();
 
         // Walk every pressable container as a post.
-        let Ok(iter) = root.select(r#"[data-pressable-container]"#) else {
+        let Ok(iter) = root.select(r"[data-pressable-container]") else {
             return Ok(messages);
         };
 
@@ -150,7 +150,7 @@ impl ConversationExtractor for ThreadsExtractor {
         for container in iter {
             // Skip nested pressable inside another pressable (quoted posts).
             let is_nested = container.as_node().ancestors().elements().any(
-                |el: kuchikiki::NodeDataRef<ElementData>| {
+                |el: crate::dom::engine::NodeDataRef<ElementData>| {
                     el.attributes.borrow().contains("data-pressable-container")
                 },
             );
@@ -175,7 +175,7 @@ impl ConversationExtractor for ThreadsExtractor {
             // Pull a `time[datetime]` if present.
             let ts = container.as_node().select_first("time").ok().and_then(|t| {
                 let a = t.attributes.borrow();
-                a.get("datetime").map(|s| s.to_string())
+                a.get("datetime").map(ToString::to_string)
             });
 
             // Pull text from first `span[dir=auto]` inside the container as
@@ -202,10 +202,9 @@ impl ConversationExtractor for ThreadsExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

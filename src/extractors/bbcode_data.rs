@@ -3,20 +3,20 @@
 //! Two activation paths:
 //!
 //! 1. **Steam-style `#application_config[data-partnereventstore]`** — a JSON
-//!    blob containing a BBCode body. This is what Defuddle's
+//!    blob containing a `BBCode` body. This is what Defuddle's
 //!    `BbcodeDataExtractor` actually triggers on, and matches the
 //!    `extractor--bbcode-data.html` fixture in this repo.
-//! 2. **Generic `<pre>` / `<code>` / `<textarea>` BBCode dump** — any page
-//!    whose content area is plain BBCode markup. We require ≥3 distinct
-//!    BBCode tag occurrences across these elements to gate on real BBCode
+//! 2. **Generic `<pre>` / `<code>` / `<textarea>` `BBCode` dump** — any page
+//!    whose content area is plain `BBCode` markup. We require ≥3 distinct
+//!    `BBCode` tag occurrences across these elements to gate on real `BBCode`
 //!    content (not just the literal characters `[` and `]` appearing in
 //!    code samples).
 //!
 //! Registered **last** in `extractors/mod.rs` so any more specific extractor
 //! wins first.
 
+use crate::dom::engine::NodeRef;
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
-use kuchikiki::NodeRef;
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -144,22 +144,24 @@ fn format_iso8601_ms(unix_seconds: i64) -> String {
     let secs = unix_seconds;
     let days_from_epoch = secs.div_euclid(86_400);
     let secs_in_day = secs.rem_euclid(86_400);
-    let h = secs_in_day / 3600;
-    let m = (secs_in_day % 3600) / 60;
-    let s = secs_in_day % 60;
+    let hour = secs_in_day / 3600;
+    let minute = (secs_in_day % 3600) / 60;
+    let second = secs_in_day % 60;
 
-    let (y, mo, d) = days_to_ymd(days_from_epoch);
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}.000Z")
+    let (year, month, day) = days_to_ymd(days_from_epoch);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.000Z")
 }
 
-#[allow(clippy::cast_possible_truncation)]
+// Not `const`: `i64::from(u32)` (used below, in place of an `as` cast) is
+// not yet a stable const fn.
+#[allow(clippy::cast_possible_truncation, clippy::missing_const_for_fn)]
 fn days_to_ymd(days_from_epoch: i64) -> (i32, u32, u32) {
     // Algorithm from Howard Hinnant's date library (public domain).
     let z = days_from_epoch + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097) as u32;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe as i64 + era * 400;
+    let y = i64::from(yoe) + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
@@ -243,16 +245,31 @@ fn strip_inline_bbcode(s: &str) -> String {
 // BBCode → HTML parser
 // ---------------------------------------------------------------------------
 
-/// Convert a BBCode string to HTML.
+/// Convert a `BBCode` string to HTML.
 ///
 /// Covers: `[b]`, `[i]`, `[u]`, `[s]`, `[h1]`–`[h4]`, `[url=...]`, `[img]`,
 /// `[quote]`, `[code]`, `[list]`/`[*]`, `[size=N]`, `[color=...]`, `[p]`,
 /// plus Steam-specific `[previewyoutube]`. Unknown tags are stripped.
 #[must_use]
 pub fn bbcode_to_html(bbcode: &str) -> String {
-    let mut html = bbcode.to_string();
+    let html = bbcode.to_string();
+    let html = apply_headings(&html);
+    let html = apply_inline_formatting(&html);
+    let html = apply_size_color(&html);
+    let html = apply_links(&html);
+    let html = apply_images(&html);
+    let html = apply_preview_youtube(&html);
+    let html = apply_lists(&html);
+    let html = apply_quote_code(&html);
+    let html = apply_spoilers(&html);
+    let html = apply_paragraphs(&html);
+    // Convert remaining bare newlines to <br>.
+    let html = html.replace('\n', "<br>");
+    strip_remaining_tags(&html)
+}
 
-    // Headings first (so [h1]...[/h1] doesn't get caught by the strip pass).
+/// Headings first (so `[h1]...[/h1]` doesn't get caught by the strip pass).
+fn apply_headings(html: &str) -> String {
     static H1: OnceLock<Regex> = OnceLock::new();
     static H2: OnceLock<Regex> = OnceLock::new();
     static H3: OnceLock<Regex> = OnceLock::new();
@@ -261,12 +278,13 @@ pub fn bbcode_to_html(bbcode: &str) -> String {
     let h2 = H2.get_or_init(|| Regex::new(r"(?is)\[h2\](.*?)\[/h2\]").expect("re"));
     let h3 = H3.get_or_init(|| Regex::new(r"(?is)\[h3\](.*?)\[/h3\]").expect("re"));
     let h4 = H4.get_or_init(|| Regex::new(r"(?is)\[h4\](.*?)\[/h4\]").expect("re"));
-    html = h1.replace_all(&html, "<h1>$1</h1>").into_owned();
-    html = h2.replace_all(&html, "<h2>$1</h2>").into_owned();
-    html = h3.replace_all(&html, "<h3>$1</h3>").into_owned();
-    html = h4.replace_all(&html, "<h4>$1</h4>").into_owned();
+    let html = h1.replace_all(html, "<h1>$1</h1>").into_owned();
+    let html = h2.replace_all(&html, "<h2>$1</h2>").into_owned();
+    let html = h3.replace_all(&html, "<h3>$1</h3>").into_owned();
+    h4.replace_all(&html, "<h4>$1</h4>").into_owned()
+}
 
-    // Inline formatting.
+fn apply_inline_formatting(html: &str) -> String {
     static B: OnceLock<Regex> = OnceLock::new();
     static I: OnceLock<Regex> = OnceLock::new();
     static U: OnceLock<Regex> = OnceLock::new();
@@ -275,119 +293,126 @@ pub fn bbcode_to_html(bbcode: &str) -> String {
     let i = I.get_or_init(|| Regex::new(r"(?is)\[i\](.*?)\[/i\]").expect("re"));
     let u = U.get_or_init(|| Regex::new(r"(?is)\[u\](.*?)\[/u\]").expect("re"));
     let s = S.get_or_init(|| Regex::new(r"(?is)\[s\](.*?)\[/s\]").expect("re"));
-    html = b.replace_all(&html, "<strong>$1</strong>").into_owned();
-    html = i.replace_all(&html, "<em>$1</em>").into_owned();
-    html = u.replace_all(&html, "<u>$1</u>").into_owned();
-    html = s.replace_all(&html, "<s>$1</s>").into_owned();
+    let html = b.replace_all(html, "<strong>$1</strong>").into_owned();
+    let html = i.replace_all(&html, "<em>$1</em>").into_owned();
+    let html = u.replace_all(&html, "<u>$1</u>").into_owned();
+    s.replace_all(&html, "<s>$1</s>").into_owned()
+}
 
-    // Sizing / colour: emit a span. Markdown conversion will strip these,
-    // but we keep semantic structure for HTML consumers.
+/// Sizing / colour: emit a span. Markdown conversion will strip these,
+/// but we keep semantic structure for HTML consumers.
+fn apply_size_color(html: &str) -> String {
     static SIZE: OnceLock<Regex> = OnceLock::new();
     static COLOR: OnceLock<Regex> = OnceLock::new();
     let size =
         SIZE.get_or_init(|| Regex::new(r"(?is)\[size=([^\]]+)\](.*?)\[/size\]").expect("re"));
     let color =
         COLOR.get_or_init(|| Regex::new(r"(?is)\[color=([^\]]+)\](.*?)\[/color\]").expect("re"));
-    html = size
-        .replace_all(&html, r#"<span style="font-size:$1">$2</span>"#)
+    let html = size
+        .replace_all(html, r#"<span style="font-size:$1">$2</span>"#)
         .into_owned();
-    html = color
+    color
         .replace_all(&html, r#"<span style="color:$1">$2</span>"#)
-        .into_owned();
+        .into_owned()
+}
 
-    // Links — rewrite carefully to avoid `javascript:` injection.
+/// Links — rewrite carefully to avoid `javascript:` injection.
+fn apply_links(html: &str) -> String {
     static URL_RE: OnceLock<Regex> = OnceLock::new();
     let url_re = URL_RE.get_or_init(|| {
         Regex::new(r#"(?is)\[url=["']?([^"'\]]+)["']?\](.*?)\[/url\]"#).expect("re")
     });
-    html = url_re
-        .replace_all(&html, |caps: &regex::Captures| {
-            let raw_href = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+    url_re
+        .replace_all(html, |caps: &regex::Captures| {
+            let raw_href = caps.get(1).map_or("", |m| m.as_str());
             // Steam emits `\"` escaping inside JSON BBCode bodies; clean it up.
             let href = raw_href.replace(r#"\""#, "");
-            let text = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            let text = caps.get(2).map_or("", |m| m.as_str());
             if is_dangerous_url(&href) {
                 text.to_string()
             } else {
                 format!(r#"<a href="{}">{}</a>"#, href.trim(), text)
             }
         })
-        .into_owned();
+        .into_owned()
+}
 
-    // Images.
+fn apply_images(html: &str) -> String {
     static IMG: OnceLock<Regex> = OnceLock::new();
     let img = IMG.get_or_init(|| Regex::new(r"(?is)\[img\](.*?)\[/img\]").expect("re"));
-    html = img.replace_all(&html, r#"<img src="$1">"#).into_owned();
+    img.replace_all(html, r#"<img src="$1">"#).into_owned()
+}
 
-    // Steam preview-YouTube. Defuddle: `[previewyoutube="VID;full"][/previewyoutube]`
-    // → `<img src="https://www.youtube.com/watch?v=VID">`.
+/// Steam preview-YouTube. Defuddle: `[previewyoutube="VID;full"][/previewyoutube]`
+/// → `<img src="https://www.youtube.com/watch?v=VID">`.
+fn apply_preview_youtube(html: &str) -> String {
     static PREVIEW: OnceLock<Regex> = OnceLock::new();
     let preview = PREVIEW.get_or_init(|| {
         Regex::new(r#"(?is)\[previewyoutube=["']?([^;'"\]]+)[^"'\]]*["']?\]\[/previewyoutube\]"#)
             .expect("re")
     });
-    html = preview
-        .replace_all(&html, r#"<img src="https://www.youtube.com/watch?v=$1">"#)
-        .into_owned();
+    preview
+        .replace_all(html, r#"<img src="https://www.youtube.com/watch?v=$1">"#)
+        .into_owned()
+}
 
-    // Lists.
+fn apply_lists(html: &str) -> String {
     static LIST: OnceLock<Regex> = OnceLock::new();
+    static OLIST: OnceLock<Regex> = OnceLock::new();
     let list_re = LIST.get_or_init(|| Regex::new(r"(?is)\[list\](.*?)\[/list\]").expect("re"));
-    html = list_re
-        .replace_all(&html, |caps: &regex::Captures| {
-            let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+    let olist_re = OLIST.get_or_init(|| Regex::new(r"(?is)\[olist\](.*?)\[/olist\]").expect("re"));
+    let html = list_re
+        .replace_all(html, |caps: &regex::Captures| {
+            let inner = caps.get(1).map_or("", |m| m.as_str());
             format!("<ul>{}</ul>", convert_list_items(inner))
         })
         .into_owned();
-    static OLIST: OnceLock<Regex> = OnceLock::new();
-    let olist_re = OLIST.get_or_init(|| Regex::new(r"(?is)\[olist\](.*?)\[/olist\]").expect("re"));
-    html = olist_re
+    olist_re
         .replace_all(&html, |caps: &regex::Captures| {
-            let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let inner = caps.get(1).map_or("", |m| m.as_str());
             format!("<ol>{}</ol>", convert_list_items(inner))
         })
-        .into_owned();
+        .into_owned()
+}
 
-    // Quote / code blocks.
+fn apply_quote_code(html: &str) -> String {
     static QUOTE: OnceLock<Regex> = OnceLock::new();
+    static CODE: OnceLock<Regex> = OnceLock::new();
     let quote =
         QUOTE.get_or_init(|| Regex::new(r"(?is)\[quote(?:=[^\]]+)?\](.*?)\[/quote\]").expect("re"));
-    html = quote
-        .replace_all(&html, "<blockquote>$1</blockquote>")
-        .into_owned();
-    static CODE: OnceLock<Regex> = OnceLock::new();
     let code = CODE.get_or_init(|| Regex::new(r"(?is)\[code\](.*?)\[/code\]").expect("re"));
-    html = code
-        .replace_all(&html, "<pre><code>$1</code></pre>")
+    let html = quote
+        .replace_all(html, "<blockquote>$1</blockquote>")
         .into_owned();
+    code.replace_all(&html, "<pre><code>$1</code></pre>")
+        .into_owned()
+}
 
-    // Spoilers.
+fn apply_spoilers(html: &str) -> String {
     static SPOILER: OnceLock<Regex> = OnceLock::new();
     let spoiler =
         SPOILER.get_or_init(|| Regex::new(r"(?is)\[spoiler\](.*?)\[/spoiler\]").expect("re"));
-    html = spoiler
-        .replace_all(&html, "<details><summary>Spoiler</summary>$1</details>")
-        .into_owned();
+    spoiler
+        .replace_all(html, "<details><summary>Spoiler</summary>$1</details>")
+        .into_owned()
+}
 
-    // Paragraphs: [p]...[/p] — convert literal newlines inside to <br>.
+/// Paragraphs: `[p]...[/p]` — convert literal newlines inside to `<br>`.
+fn apply_paragraphs(html: &str) -> String {
     static P: OnceLock<Regex> = OnceLock::new();
     let p_re = P.get_or_init(|| Regex::new(r"(?is)\[p\](.*?)\[/p\]").expect("re"));
-    html = p_re
-        .replace_all(&html, |caps: &regex::Captures| {
-            let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            format!("<p>{}</p>", inner.replace('\n', "<br>"))
-        })
-        .into_owned();
+    p_re.replace_all(html, |caps: &regex::Captures| {
+        let inner = caps.get(1).map_or("", |m| m.as_str());
+        format!("<p>{}</p>", inner.replace('\n', "<br>"))
+    })
+    .into_owned()
+}
 
-    // Convert remaining bare newlines to <br>.
-    html = html.replace('\n', "<br>");
-
-    // Strip any remaining unknown BBCode-shaped tags.
+/// Strip any remaining unknown BBCode-shaped tags.
+fn strip_remaining_tags(html: &str) -> String {
     static STRIP: OnceLock<Regex> = OnceLock::new();
     let strip = STRIP.get_or_init(|| Regex::new(r"\[[^\]]+\]").expect("re"));
-    html = strip.replace_all(&html, "").into_owned();
-
-    html
+    strip.replace_all(html, "").into_owned()
 }
 
 fn convert_list_items(inner: &str) -> String {
@@ -417,10 +442,9 @@ fn is_dangerous_url(url: &str) -> bool {
 #[allow(clippy::disallowed_methods)] // unwrap fine in tests
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html_str: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html_str)
+        crate::dom::parse_html(html_str)
     }
 
     fn ctx_for(url: &'static str) -> ExtractCtx<'static> {
@@ -512,7 +536,7 @@ mod tests {
         let ctx = ctx_for("https://example.com/foo");
         assert!(ext.can_extract(&ctx));
         let res = ext.extract(&ctx, &root).expect("should extract");
-        assert!(res.content_html.contains("<strong>a</strong>"), "{:?}", res);
+        assert!(res.content_html.contains("<strong>a</strong>"), "{res:?}");
     }
 
     #[test]

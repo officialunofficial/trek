@@ -4,9 +4,9 @@
 //! We pick the 8-12 highest-impact heuristics from the 29-item list and
 //! leave the rest as TODO (see TODO.md in this directory's parent).
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::dom::walk::{
     count_words, descendants_post_order, descendants_pre_order, element_children, get_attr,
@@ -16,25 +16,25 @@ use crate::dom::{DomCtx, DomPass};
 
 pub struct ContentPatterns;
 
-static SOCIAL_COUNT_RE: Lazy<Regex> = Lazy::new(|| {
+static SOCIAL_COUNT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*\d+\s+(?:like|likes|comment|comments|reply|replies|share|shares)\s*$")
         .expect("valid regex")
 });
 
-static READ_TIME_RE: Lazy<Regex> = Lazy::new(|| {
+static READ_TIME_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*\d+\s*(?:min|minute|minutes)\s+read\s*$").expect("valid regex")
 });
 
-static BYLINE_BY_RE: Lazy<Regex> = Lazy::new(|| {
+static BYLINE_BY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*by\s+[A-Z][\w'\-]+(?:\s+[A-Z][\w'\-]+)*").expect("valid regex")
 });
 
-static SHARE_FOLLOW_RE: Lazy<Regex> = Lazy::new(|| {
+static SHARE_FOLLOW_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*(?:share|follow|tweet|like|subscribe|sign up|sign in|copy link)\s*$")
         .expect("valid regex")
 });
 
-static NEWSLETTER_RE: Lazy<Regex> = Lazy::new(|| {
+static NEWSLETTER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:subscribe to (?:our|the) newsletter|join (?:our|the) newsletter|sign up for (?:our|the) newsletter|email(?: address)? to subscribe|never miss a (?:post|story))\b").expect("valid regex")
 });
 
@@ -47,7 +47,11 @@ fn link_density(node: &NodeRef) -> f64 {
     if txt_len == 0 {
         return 0.0;
     }
-    link_text_length(node) as f64 / txt_len as f64
+    // Text lengths never approach u32::MAX, so this conversion via u32 (an
+    // exact fit for f64, unlike usize) cannot lose precision in practice.
+    let link_len = u32::try_from(link_text_length(node)).unwrap_or(u32::MAX);
+    let total_len = u32::try_from(txt_len).unwrap_or(u32::MAX);
+    f64::from(link_len) / f64::from(total_len)
 }
 
 fn drop_social_counters(root: &NodeRef) {
@@ -167,10 +171,8 @@ fn drop_breadcrumb_at_start(root: &NodeRef) {
     // <div class="meta"> sibling that originally separated the heading
     // from the body.
     let kids = element_children(&scope);
-    if kids.len() >= 2 {
-        if is_any_tag(&kids[0], &["h1"]) && is_any_tag(&kids[1], &["hr", "br"]) {
-            kids[1].detach();
-        }
+    if kids.len() >= 2 && is_any_tag(&kids[0], &["h1"]) && is_any_tag(&kids[1], &["hr", "br"]) {
+        kids[1].detach();
     }
     let kids = element_children(&scope);
     for k in kids.into_iter().take(4) {
@@ -182,20 +184,19 @@ fn drop_breadcrumb_at_start(root: &NodeRef) {
             break;
         }
         // Direct UL/OL/NAV breadcrumb.
-        if is_any_tag(&k, &["ul", "ol", "nav"]) {
-            if looks_like_breadcrumb_list(&k) {
-                k.detach();
-                continue;
-            }
+        if is_any_tag(&k, &["ul", "ol", "nav"]) && looks_like_breadcrumb_list(&k) {
+            k.detach();
+            continue;
         }
         // Wrapper div/section/aside containing exactly one breadcrumb-shaped UL/OL/NAV.
         if is_any_tag(&k, &["div", "section", "aside"]) {
             let inner = element_children(&k);
-            if inner.len() == 1 && is_any_tag(&inner[0], &["ul", "ol", "nav"]) {
-                if looks_like_breadcrumb_list(&inner[0]) {
-                    k.detach();
-                    continue;
-                }
+            if inner.len() == 1
+                && is_any_tag(&inner[0], &["ul", "ol", "nav"])
+                && looks_like_breadcrumb_list(&inner[0])
+            {
+                k.detach();
+                continue;
             }
         }
         // Stop walking past the first long-prose paragraph.
@@ -210,18 +211,13 @@ fn drop_breadcrumb_at_start(root: &NodeRef) {
 fn looks_like_breadcrumb_list(node: &NodeRef) -> bool {
     let txt = text_content(node);
     let trimmed = txt.trim();
-    let sep_count = trimmed
-        .matches(|c: char| c == '/' || c == '>' || c == '·' || c == '|' || c == '\u{203A}')
-        .count();
+    let sep_count = trimmed.matches(['/', '>', '·', '|', '\u{203A}']).count();
     let words = count_words(trimmed);
     let li_count = node
         .descendants()
         .filter(|d| is_any_tag(d, &["li"]))
         .count();
-    let a_count = node
-        .descendants()
-        .filter(|d| is_any_tag(d, &["a"]))
-        .count();
+    let a_count = node.descendants().filter(|d| is_any_tag(d, &["a"])).count();
     if words >= 25 {
         return false;
     }
@@ -363,7 +359,7 @@ fn drop_trailing_author_block(root: &NodeRef) {
             continue;
         }
         let by_match = BYLINE_BY_RE.is_match(trimmed);
-        let date_match = once_cell::sync::Lazy::force(&TRAILING_DATE_RE).is_match(trimmed);
+        let date_match = std::sync::LazyLock::force(&TRAILING_DATE_RE).is_match(trimmed);
         let lc = trimmed.to_ascii_lowercase();
         let label_match = lc.starts_with("posted in")
             || lc.starts_with("filed under")
@@ -382,17 +378,16 @@ fn drop_trailing_author_block(root: &NodeRef) {
             let inner_w = count_words(inner_t);
             if inner_w < 14 {
                 let has_by = BYLINE_BY_RE.is_match(inner_t);
-                let has_date = once_cell::sync::Lazy::force(&TRAILING_DATE_RE).is_match(inner_t);
+                let has_date = std::sync::LazyLock::force(&TRAILING_DATE_RE).is_match(inner_t);
                 if has_by || has_date {
                     k.detach();
-                    continue;
                 }
             }
         }
     }
 }
 
-static TRAILING_DATE_RE: Lazy<Regex> = Lazy::new(|| {
+static TRAILING_DATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{0,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}").expect("valid regex")
 });
 
@@ -428,7 +423,6 @@ fn drop_pinned_or_label_widgets(root: &NodeRef) {
         }
     }
 }
-
 
 fn drop_byline_near_start(root: &NodeRef) {
     // Find first H1.
@@ -490,9 +484,7 @@ fn drop_byline_near_start(root: &NodeRef) {
             let is_long_date = is_short && LONG_DATE_RE.is_match(trimmed);
             let is_author_list = is_short
                 && is_any_tag(&s, &["ul", "ol"])
-                && get_attr(&s, "class")
-                    .map(|c| c.to_ascii_lowercase().contains("author"))
-                    .unwrap_or(false);
+                && get_attr(&s, "class").is_some_and(|c| c.to_ascii_lowercase().contains("author"));
             let is_read_time = READ_TIME_RE.is_match(trimmed);
             if is_byline || is_iso_date || is_long_date || is_author_list || is_read_time {
                 let next = s.next_sibling();
@@ -509,10 +501,10 @@ fn drop_byline_near_start(root: &NodeRef) {
     }
 }
 
-static ISO_DATE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*\d{4}-\d{1,2}-\d{1,2}\s*$").expect("valid regex"));
+static ISO_DATE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*\d{4}-\d{1,2}-\d{1,2}\s*$").expect("valid regex"));
 
-static LONG_DATE_RE: Lazy<Regex> = Lazy::new(|| {
+static LONG_DATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*(?:\d{1,2}\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*\d{0,4}\s*$").expect("valid regex")
 });
 

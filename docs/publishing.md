@@ -13,7 +13,7 @@ This guide explains how to publish Trek to both crates.io (Rust) and npm (WebAss
 
 ## Automated Publishing (Recommended)
 
-Trek uses GitHub Actions to automatically publish to both crates.io and npm when a new release is created. The release workflow will:
+Trek uses GitHub Actions to automatically publish to both crates.io and npm when a new release is created. The release workflow does the following:
 
 1. First publish to crates.io (Rust package)
 2. Then publish to npm (WebAssembly package)
@@ -41,9 +41,9 @@ Trek uses GitHub Actions to automatically publish to both crates.io and npm when
    - Click "Publish release"
 
 4. **Monitor the workflows:**
-   - The release workflow will trigger automatically
+   - The release workflow triggers automatically
    - Check [Actions tab](https://github.com/officialunofficial/trek/actions) for progress
-   - Packages will be available at:
+   - Packages are available at:
      - Rust: https://crates.io/crates/trek-rs
      - npm: https://www.npmjs.com/package/@officialunofficial/trek
 
@@ -60,12 +60,12 @@ If you need to publish manually:
 
 2. **Dry run (recommended):**
    ```bash
-   make crates-publish-dry
+   just crates-publish-dry
    ```
 
 3. **Publish:**
    ```bash
-   make crates-publish
+   just crates-publish
    ```
 
 ### Publishing to npm:
@@ -77,17 +77,17 @@ If you need to publish manually:
 
 2. **Build the WASM package:**
    ```bash
-   make wasm-build
+   just wasm-build
    ```
 
 3. **Dry run (recommended):**
    ```bash
-   make npm-publish-dry
+   just npm-publish-dry
    ```
 
 4. **Publish:**
    ```bash
-   make npm-publish
+   just npm-publish
    ```
 
 ### Using GitHub Actions Manually:
@@ -133,7 +133,7 @@ For testing, you can publish pre-release versions:
 version = "0.2.0-beta.1"
 
 # Build and publish with beta tag
-make wasm-build
+just wasm-build
 cd pkg
 npm publish --tag beta --access public
 ```
@@ -172,8 +172,8 @@ If the WASM build fails:
 
 3. Clean and rebuild:
    ```bash
-   make clean
-   make wasm-build
+   just clean
+   just wasm-build
    ```
 
 ## Package Information

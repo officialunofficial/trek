@@ -5,7 +5,7 @@
 //! assistant side); both selectors below are documented in Defuddle's
 //! `grok.ts` and may break as Grok's UI evolves.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::serialize;
 use crate::extractor::{
@@ -91,9 +91,8 @@ impl ConversationExtractor for GrokExtractor {
 
         for node_data in containers {
             let node = node_data.as_node();
-            let element = match node.as_element() {
-                Some(el) => el,
-                None => continue,
+            let Some(element) = node.as_element() else {
+                continue;
             };
             let attrs = element.attributes.borrow();
             let class_attr = attrs.get("class").unwrap_or("").to_string();
@@ -105,9 +104,8 @@ impl ConversationExtractor for GrokExtractor {
                 continue;
             }
 
-            let bubble = match find_descendant_with_class(node, &["message-bubble"]) {
-                Some(b) => b,
-                None => continue,
+            let Some(bubble) = find_descendant_with_class(node, &["message-bubble"]) else {
+                continue;
             };
 
             let (author, html) = if is_user {
@@ -163,10 +161,9 @@ fn serialize_inner(node: &NodeRef) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

@@ -1,15 +1,15 @@
 //! Remove elements hidden via inline `style` or hidden CSS class names.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::dom::walk::{get_attr, is_any_tag};
 use crate::dom::{DomCtx, DomPass};
 
 pub struct Hidden;
 
-static HIDDEN_STYLE_RE: Lazy<Regex> = Lazy::new(|| {
+static HIDDEN_STYLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:^|;\s*)(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0)(?:\s*;|\s*$)")
         .expect("valid regex")
 });
@@ -98,7 +98,6 @@ impl DomPass for Hidden {
                 }
                 if class_marks_hidden(&class) {
                     to_remove.push(d.clone());
-                    continue;
                 }
             }
         }

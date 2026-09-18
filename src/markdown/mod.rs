@@ -1,6 +1,6 @@
 //! HTML → Markdown conversion.
 //!
-//! Walks a `kuchikiki` DOM and emits Markdown closely matching Defuddle's
+//! Walks a parsed DOM tree and emits Markdown closely matching Defuddle's
 //! `markdown.ts` output. Used to populate `TrekResponse::content_markdown`
 //! when the corresponding output flag is set.
 //!
@@ -9,10 +9,9 @@
 //! * [`node_to_markdown`] — convert an existing DOM subtree (used by
 //!   site-specific extractors that already hold a parsed tree).
 
-use kuchikiki::NodeRef;
-use kuchikiki::traits::TendrilSink;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 mod code;
 mod escape;
@@ -45,7 +44,7 @@ pub fn html_to_markdown_with_title(html: &str, title: &str) -> String {
 #[must_use]
 pub fn html_to_markdown_with(html: &str, title: &str, base_url: Option<&str>) -> String {
     let cleaned = strip_wbr(html);
-    let dom = kuchikiki::parse_html().one(cleaned.as_str());
+    let dom = crate::dom::parse_html(cleaned.as_str());
     node_to_markdown_with(&dom, title, base_url)
 }
 
@@ -80,15 +79,15 @@ fn locate_body(node: &NodeRef) -> Option<NodeRef> {
 }
 
 fn strip_wbr(html: &str) -> String {
-    static WBR_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?i)<wbr\s*/?>|</wbr>").expect("wbr regex"));
+    static WBR_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)<wbr\s*/?>|</wbr>").expect("wbr regex"));
     WBR_RE.replace_all(html, "").into_owned()
 }
 
 /// Renderer state carried through the tree walk.
 #[derive(Default)]
 struct Renderer {
-    /// Stack of (kind, ordinal_or_zero) for ancestor lists. Used to compute
+    /// Stack of (kind, `ordinal_or_zero`) for ancestor lists. Used to compute
     /// indentation depth and bullet/numbering.
     list_stack: Vec<ListFrame>,
     /// In-progress footnote definitions, keyed by id.
@@ -153,7 +152,6 @@ impl Renderer {
         match tag.as_str() {
             "script" | "style" | "noscript" | "template" => {}
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => self.render_heading(node, &tag, out),
-            "p" => self.render_paragraph(node, out),
             "br" => {
                 // Stray <br> at block level → a blank line.
                 ensure_trailing_newlines(out, 2);
@@ -169,12 +167,11 @@ impl Renderer {
                 // Stray <li> outside of a list — render its children as a paragraph.
                 self.render_paragraph(node, out);
             }
-            "pre" => self.render_pre(node, out),
+            "pre" => Self::render_pre(node, out),
             "table" => self.render_table(node, out),
             "figure" => self.render_figure(node, out),
-            "figcaption" => self.render_paragraph(node, out),
+            "p" | "figcaption" | "details" => self.render_paragraph(node, out),
             "dl" => self.render_dl(node, out),
-            "details" => self.render_paragraph(node, out),
             "div" | "section" | "article" | "main" | "aside" | "header" | "footer" | "nav" => {
                 self.render_div_like(node, out);
             }
@@ -347,7 +344,7 @@ impl Renderer {
         let mut title = String::new();
         let mut content_node: Option<NodeRef> = None;
         for child in node.descendants() {
-            if !child.as_element().is_some() {
+            if child.as_element().is_none() {
                 continue;
             }
             if title.is_empty() && has_class(&child, "callout-title-inner") {
@@ -444,15 +441,16 @@ impl Renderer {
         let frame = self.list_stack.last().copied();
 
         // Compute marker.
-        let marker = if let Some(f) = frame {
-            if f.ordered {
-                format!("{}. ", f.next)
-            } else {
-                "- ".to_string()
-            }
-        } else {
-            "- ".to_string()
-        };
+        let marker = frame.map_or_else(
+            || "- ".to_string(),
+            |f| {
+                if f.ordered {
+                    format!("{}. ", f.next)
+                } else {
+                    "- ".to_string()
+                }
+            },
+        );
         if let Some(top) = self.list_stack.last_mut() {
             if top.ordered {
                 top.next += 1;
@@ -467,11 +465,11 @@ impl Renderer {
         let mut inline_buf = String::new();
         let mut nested_buf = String::new();
         for child in node.children() {
-            if let Some(_text) = child.as_text() {
-                inline_buf.push_str(&self.render_inline_text(&child.as_text().unwrap().borrow()));
+            if let Some(text) = child.as_text() {
+                inline_buf.push_str(&self.render_inline_text(&text.borrow()));
                 continue;
             }
-            if !child.as_element().is_some() {
+            if child.as_element().is_none() {
                 continue;
             }
             let tg = tag_name(&child);
@@ -526,22 +524,17 @@ impl Renderer {
 
         let cont_indent = format!("{indent}\t");
         for line in nested_buf.lines() {
-            if line.is_empty() {
-                out.push('\n');
-            } else if line.starts_with('\t') || line.starts_with("- ") || is_ordered_marker(line) {
-                // Already a list line — preserve indentation.
+            // Preserve indentation for list lines and prefix continuation
+            // lines the same way; a blank line stays blank.
+            if !line.is_empty() {
                 out.push_str(&cont_indent);
                 out.push_str(line);
-                out.push('\n');
-            } else {
-                out.push_str(&cont_indent);
-                out.push_str(line);
-                out.push('\n');
             }
+            out.push('\n');
         }
     }
 
-    fn render_pre(&mut self, node: &NodeRef, out: &mut String) {
+    fn render_pre(node: &NodeRef, out: &mut String) {
         // Drop pre wrappers used by code-highlighting figures so we still pick up
         // the inner code element.
         let inner_code = node.descendants().find(|n| is_tag(n, "code"));
@@ -588,7 +581,7 @@ impl Renderer {
                 let prev = self.in_table;
                 self.in_table = true;
                 let table_md = tables::render_simple(node, |cell| {
-                    let mut sub = Renderer::new();
+                    let mut sub = Self::new();
                     sub.in_table = true;
                     sub.render_inline(cell)
                 });
@@ -644,7 +637,7 @@ impl Renderer {
         // wrapper rather than synthesizing the colon-prefix definition list
         // syntax (which most Markdown flavors don't support).
         for child in node.children() {
-            if !child.as_element().is_some() {
+            if child.as_element().is_none() {
                 continue;
             }
             let tg = tag_name(&child);
@@ -711,7 +704,7 @@ impl Renderer {
                     out.push_str("==");
                 }
             }
-            "code" => self.render_inline_code(node, out),
+            "code" => Self::render_inline_code(node, out),
             "a" => self.render_anchor(node, out),
             "img" => out.push_str(&self.render_image(node)),
             "sup" => self.render_sup(node, out),
@@ -723,57 +716,15 @@ impl Renderer {
                     out.push_str("</sub>");
                 }
             }
-            "math" => {
-                if let Some(latex) = mathml_latex(node) {
-                    if self.in_table {
-                        out.push('$');
-                        out.push_str(&latex);
-                        out.push('$');
-                    } else {
-                        let display = attr(node, "display").as_deref() == Some("block");
-                        if display {
-                            out.push_str("\n\n$$\n");
-                            out.push_str(&latex);
-                            out.push_str("\n$$\n\n");
-                        } else {
-                            out.push('$');
-                            out.push_str(&latex);
-                            out.push('$');
-                        }
-                    }
-                }
-            }
+            "math" => self.render_inline_math(node, out),
             "span" | "u" | "small" | "abbr" | "cite" | "dfn" | "kbd" | "samp" | "var" | "time"
             | "data" | "label" | "ruby" | "rp" | "rt" | "tt" | "ins" | "q" | "bdi" | "bdo" => {
-                // Special-case KaTeX wrappers: emit LaTeX from data-latex / annotation.
-                if has_any_class(node, &["math", "katex", "katex-display"]) {
-                    if let Some(latex) = katex_latex(node) {
-                        let is_display =
-                            has_class(node, "katex-display") || has_class(node, "math-display");
-                        if is_display && !self.in_table {
-                            out.push_str("\n\n$$\n");
-                            out.push_str(&latex);
-                            out.push_str("\n$$\n\n");
-                        } else {
-                            out.push('$');
-                            out.push_str(&latex);
-                            out.push('$');
-                        }
-                        return;
-                    }
-                }
-                // Transparent passthrough.
-                let inner = self.render_inline(node);
-                out.push_str(&inner);
+                self.render_inline_span(node, out);
             }
             "iframe" => {
                 // Embed transformations are handled upstream by standardize.rs;
                 // anything that survived that pass we serialize raw.
                 out.push_str(&serialize_node(node));
-            }
-            "button" => {
-                let inner = self.render_inline(node);
-                out.push_str(&inner);
             }
             "script" | "style" | "noscript" | "template" => {}
             // Block elements appearing in inline context — render their text content.
@@ -788,6 +739,54 @@ impl Renderer {
                 out.push_str(&inner);
             }
         }
+    }
+
+    /// Render a `<math>` (`MathML`) node as inline or display LaTeX.
+    fn render_inline_math(&self, node: &NodeRef, out: &mut String) {
+        let Some(latex) = mathml_latex(node) else {
+            return;
+        };
+        if self.in_table {
+            out.push('$');
+            out.push_str(&latex);
+            out.push('$');
+            return;
+        }
+        let display = attr(node, "display").as_deref() == Some("block");
+        if display {
+            out.push_str("\n\n$$\n");
+            out.push_str(&latex);
+            out.push_str("\n$$\n\n");
+        } else {
+            out.push('$');
+            out.push_str(&latex);
+            out.push('$');
+        }
+    }
+
+    /// Render a `<span>`-family node: a `KaTeX` wrapper becomes LaTeX, otherwise
+    /// its children are rendered as transparent inline passthrough.
+    fn render_inline_span(&mut self, node: &NodeRef, out: &mut String) {
+        // Special-case KaTeX wrappers: emit LaTeX from data-latex / annotation.
+        if has_any_class(node, &["math", "katex", "katex-display"]) {
+            if let Some(latex) = katex_latex(node) {
+                let is_display =
+                    has_class(node, "katex-display") || has_class(node, "math-display");
+                if is_display && !self.in_table {
+                    out.push_str("\n\n$$\n");
+                    out.push_str(&latex);
+                    out.push_str("\n$$\n\n");
+                } else {
+                    out.push('$');
+                    out.push_str(&latex);
+                    out.push('$');
+                }
+                return;
+            }
+        }
+        // Transparent passthrough.
+        let inner = self.render_inline(node);
+        out.push_str(&inner);
     }
 
     fn render_inline_text(&self, raw: &str) -> String {
@@ -817,7 +816,7 @@ impl Renderer {
         escape_md_text(&buf)
     }
 
-    fn render_inline_code(&mut self, node: &NodeRef, out: &mut String) {
+    fn render_inline_code(node: &NodeRef, out: &mut String) {
         // Inline code (not inside a <pre>) — render text content with backtick
         // escaping.
         let content = node.text_contents();
@@ -858,20 +857,19 @@ impl Renderer {
         if let Some(id) = links::footnote_ref_id(node) {
             // Check if this anchor wraps a <sup> — Defuddle treats those as
             // footnote refs.
-            if node.descendants().any(|n| is_tag(&n, "sup"))
-                || links::is_backref(node) == false
+            if (node.descendants().any(|n| is_tag(&n, "sup"))
+                || !links::is_backref(node)
                     && node
                         .text_contents()
                         .trim()
                         .chars()
-                        .all(|c| c.is_ascii_digit() || c == '↩')
+                        .all(|c| c.is_ascii_digit() || c == '↩'))
+                && !id.is_empty()
             {
-                if !id.is_empty() {
-                    out.push_str("[^");
-                    out.push_str(&id);
-                    out.push(']');
-                    return;
-                }
+                out.push_str("[^");
+                out.push_str(&id);
+                out.push(']');
+                return;
             }
         }
 
@@ -911,13 +909,13 @@ impl Renderer {
     fn render_sup(&mut self, node: &NodeRef, out: &mut String) {
         // Footnote ref pattern: <sup id="fnref:N"> or class footnote-ref.
         if let Some(id) = footnote_id_from_sup(node) {
-            self.emit_footnote_ref(out, &id);
+            Self::emit_footnote_ref(out, &id);
             return;
         }
         // <sup><a href="#fn:N">...</a></sup>
         if let Some(anchor) = node.descendants().find(|n| is_tag(n, "a")) {
             if let Some(id) = links::footnote_ref_id(&anchor) {
-                self.emit_footnote_ref(out, &id);
+                Self::emit_footnote_ref(out, &id);
                 return;
             }
         }
@@ -929,7 +927,7 @@ impl Renderer {
         let trimmed = txt.trim();
         if !trimmed.is_empty() && trimmed.len() <= 4 && trimmed.chars().all(|c| c.is_ascii_digit())
         {
-            self.emit_footnote_ref(out, trimmed);
+            Self::emit_footnote_ref(out, trimmed);
             return;
         }
         let inner = self.render_inline(node);
@@ -959,16 +957,15 @@ impl Renderer {
         let Ok(parsed) = url::Url::parse(base) else {
             return trimmed.to_string();
         };
-        match parsed.join(trimmed) {
-            Ok(u) => u.to_string(),
-            Err(_) => trimmed.to_string(),
-        }
+        parsed
+            .join(trimmed)
+            .map_or_else(|_| trimmed.to_string(), |u| u.to_string())
     }
 
     /// Emit `[^id]`. Add a leading space iff the immediately preceding
     /// character is a word/closing-inline character; otherwise preserve
     /// existing whitespace verbatim.
-    fn emit_footnote_ref(&self, out: &mut String, id: &str) {
+    fn emit_footnote_ref(out: &mut String, id: &str) {
         if let Some(c) = out.chars().last() {
             if c.is_alphanumeric() || c == '`' || c == ')' || c == ']' || c == '*' {
                 out.push(' ');
@@ -979,7 +976,7 @@ impl Renderer {
         out.push(']');
     }
 
-    fn render_image(&mut self, node: &NodeRef) -> String {
+    fn render_image(&self, node: &NodeRef) -> String {
         let Some(src) = figures::best_img_src(node) else {
             return String::new();
         };
@@ -1008,11 +1005,11 @@ impl Renderer {
         let start: u32 = attr(ol, "start")
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(1);
-        let mut idx = start;
-        for li in ol.children().filter(|c| is_tag(c, "li")) {
+        for (idx, li) in (start..).zip(ol.children().filter(|c| is_tag(c, "li"))) {
             // Prefer an explicit id; otherwise number from the ol's start.
-            let id = attr(&li, "id")
-                .map(|raw| {
+            let id = attr(&li, "id").map_or_else(
+                || idx.to_string(),
+                |raw| {
                     let stripped = raw
                         .strip_prefix("fn:")
                         .or_else(|| raw.strip_prefix("fn-"))
@@ -1024,9 +1021,8 @@ impl Renderer {
                         })
                         .unwrap_or(&raw);
                     stripped.split('-').next().unwrap_or(stripped).to_string()
-                })
-                .unwrap_or_else(|| idx.to_string());
-            idx += 1;
+                },
+            );
             // Render the li's children as block content, then strip backref tails.
             let mut buf = String::new();
             for child in li.children() {
@@ -1042,9 +1038,7 @@ fn task_list_marker(li: &NodeRef) -> Option<&'static str> {
     let mut input = None;
     for d in li.descendants() {
         if is_tag(&d, "input")
-            && attr(&d, "type")
-                .map(|t| t.eq_ignore_ascii_case("checkbox"))
-                .unwrap_or(false)
+            && attr(&d, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"))
         {
             input = Some(d);
             break;
@@ -1052,26 +1046,8 @@ fn task_list_marker(li: &NodeRef) -> Option<&'static str> {
     }
     let input = input?;
     let checked = attr(&input, "checked").is_some()
-        || attr(&input, "data-checked")
-            .map(|v| v != "false")
-            .unwrap_or(false);
+        || attr(&input, "data-checked").is_some_and(|v| v != "false");
     Some(if checked { "[x]" } else { "[ ]" })
-}
-
-fn is_ordered_marker(line: &str) -> bool {
-    let trimmed = line.trim_start_matches('\t');
-    let mut chars = trimmed.chars();
-    let mut saw_digit = false;
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            saw_digit = true;
-        } else if c == '.' && saw_digit {
-            return matches!(chars.next(), Some(' '));
-        } else {
-            break;
-        }
-    }
-    false
 }
 
 fn is_callout(node: &NodeRef) -> bool {
@@ -1124,8 +1100,8 @@ fn footnote_id_from_sup(sup: &NodeRef) -> Option<String> {
 }
 
 fn strip_footnote_backrefs(s: &str) -> String {
-    static BACKREF_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"\s*↩(?:︎)?\s*$").expect("backref regex"));
+    static BACKREF_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\s*↩(?:︎)?\s*$").expect("backref regex"));
     BACKREF_RE.replace(s, "").into_owned()
 }
 
@@ -1167,7 +1143,7 @@ fn katex_latex(node: &NodeRef) -> Option<String> {
     None
 }
 
-/// Serialize a single node to HTML via kuchikiki.
+/// Serialize a single node back to HTML.
 fn serialize_node(node: &NodeRef) -> String {
     let mut buf: Vec<u8> = Vec::new();
     if node.serialize(&mut buf).is_ok() {
@@ -1254,6 +1230,17 @@ fn heading_matches_title(h: &str, title: &str) -> bool {
 }
 
 /// Final cleanup pass.
+/// Matches an empty link `[](url)` (preserve images `![](url)`) for removal
+/// in [`post_process`].
+static EMPTY_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)(?:^|[^!])\[\]\([^)]*\)").expect("empty link regex"));
+/// Matches consecutive `!` markers that would otherwise be parsed as image
+/// syntax, for [`post_process`] to insert a separating space.
+static BANG_BANG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!(!\[|\[!\[)").expect("bang regex"));
+/// Matches 3+ consecutive newlines for [`post_process`] to collapse to 2.
+static MULTI_NL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("nl regex"));
+
 fn post_process(md: &str, footnotes: &[(String, String)], title: &str) -> String {
     let mut s = md.to_string();
 
@@ -1264,8 +1251,6 @@ fn post_process(md: &str, footnotes: &[(String, String)], title: &str) -> String
     }
 
     // Remove empty links: `[](url)` (preserve images `![](url)`).
-    static EMPTY_LINK_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?m)(?:^|[^!])\[\]\([^)]*\)").expect("empty link regex"));
     s = EMPTY_LINK_RE
         .replace_all(&s, |caps: &regex::Captures| {
             // Preserve a leading non-`!` char (the regex captures it for backtracking).
@@ -1283,12 +1268,9 @@ fn post_process(md: &str, footnotes: &[(String, String)], title: &str) -> String
     // Insert space between consecutive `!` markers where they would otherwise
     // be parsed as image syntax. Rust's `regex` crate doesn't support
     // lookahead, so we match-and-restore.
-    static BANG_BANG_RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"!(!\[|\[!\[)").expect("bang regex"));
     s = BANG_BANG_RE.replace_all(&s, "! $1").into_owned();
 
     // Collapse 3+ newlines to 2.
-    static MULTI_NL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").expect("nl regex"));
     s = MULTI_NL_RE.replace_all(&s, "\n\n").into_owned();
 
     // Append accumulated footnote definitions.

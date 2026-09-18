@@ -8,16 +8,16 @@
 // the sync path falls back to scraping any `[data-testid="twitterArticleRichTextView"]`
 // container that's already in the DOM (browser-rendered case).
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 
 /// AGENT-P2B: precise URL pattern — matches `/<user>/article/<id>` or
 /// `/i/article/<id>` on x.com or twitter.com. Defuddle does the same probe.
-static X_ARTICLE_URL: Lazy<Regex> = Lazy::new(|| {
+static X_ARTICLE_URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)^https?://(?:www\.|mobile\.)?(?:x|twitter)\.com/(?:[A-Za-z0-9_]{1,15}|i)/article/\d+",
     )
@@ -77,7 +77,7 @@ impl XArticleExtractor {
     fn attr_content(root: &NodeRef, selector: &str) -> Option<String> {
         let m = root.select_first(selector).ok()?;
         let attrs = m.attributes.borrow();
-        attrs.get("content").map(|s| s.to_string())
+        attrs.get("content").map(std::string::ToString::to_string)
     }
 }
 
@@ -180,10 +180,9 @@ impl Extractor for XArticleExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

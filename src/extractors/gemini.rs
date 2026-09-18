@@ -6,7 +6,7 @@
 //! `model-response .markdown` (or the extended-response markdown when
 //! present).
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::dom::serialize;
 use crate::extractor::{
@@ -172,10 +172,9 @@ fn serialize_inner(node: &NodeRef) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     #[test]

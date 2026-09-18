@@ -6,7 +6,7 @@
 //! by nature; on the sync path it returns a minimal stub.
 // AGENT-P2C: Phase 2C knowledge extractor.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
 
@@ -88,7 +88,7 @@ impl Extractor for C2WikiExtractor {
         // generic pipeline will run on the actual DOM next.
         Err(ExtractError::Failed {
             name: "c2_wiki",
-            reason: format!("c2_wiki extraction requires async fetch of {pretty} ({title})",),
+            reason: format!("c2_wiki extraction requires async fetch of {pretty} ({title})"),
         })
     }
 

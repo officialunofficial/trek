@@ -34,16 +34,18 @@ Please note that this project is released with a Contributor Code of Conduct. By
 - Node.js (for npm publishing and scripts)
 - Python 3 (for development server)
 - wasm-pack (for WebAssembly builds)
+- `just` - install via [just.systems](https://just.systems/)
 
 ### Installing Development Dependencies
 
 ```bash
-make install-dev-deps
+just install-dev-deps
 ```
 
-This will install:
+This installs:
 - cargo-outdated
 - cargo-audit
+- cargo-deny
 - cargo-tarpaulin
 - git-cliff
 - wasm-pack
@@ -140,8 +142,8 @@ Use extract() with default options instead.
 
 ## Pull Request Process
 
-1. Ensure all tests pass: `make test`
-2. Run the pre-commit checks: `make pre-commit`
+1. Ensure all tests pass: `just test`
+2. Run the pre-commit checks: `just pre-commit`
 3. Update documentation if needed
 4. Update the CHANGELOG.md if your changes are user-facing
 5. Create a pull request with a clear title and description
@@ -158,28 +160,28 @@ Pull request titles should follow the same format as commit messages.
 
 ```bash
 # Check if code compiles
-make check
+just check
 
 # Run tests
-make test
+just test
 
 # Format code
-make fmt
+just fmt
 
 # Run linter
-make clippy
+just clippy
 
 # Run all pre-commit checks
-make pre-commit
+just pre-commit
 
 # Build WebAssembly module
-make wasm-build
+just wasm-build
 
 # Start development server
-make serve
+just serve
 
 # Generate changelog
-make changelog
+just changelog
 ```
 
 ### Before Committing
@@ -187,14 +189,32 @@ make changelog
 Always run the pre-commit checks:
 
 ```bash
-make pre-commit
+just pre-commit
 ```
 
-This will:
+This does the following:
 1. Format your code
 2. Check compilation
 3. Run clippy linter
 4. Run all tests
+
+### Adding or Updating a Dependency
+
+Every dependency change must pass `cargo-deny` before it merges:
+
+```bash
+just deny
+```
+
+This checks four things: security advisories, license compatibility, banned
+or duplicate crates, and dependency sources. CI runs the same check on every
+PR that touches `Cargo.toml`, `Cargo.lock`, or `deny.toml`. Configure the
+rules in `deny.toml`, at the repo root.
+
+Prefer a crate with an active maintainer over one with more features. Trek
+already replaced one single-maintainer dependency (`kuchikiki`) after it
+went unmaintained upstream — `cargo-deny`'s advisory check exists to catch
+the next one before it becomes a problem.
 
 ### WebAssembly Development
 
@@ -202,16 +222,16 @@ For WASM-specific development:
 
 ```bash
 # Build WASM module
-make wasm-build
+just wasm-build
 
 # Build debug WASM module
-make wasm-build-debug
+just wasm-build-debug
 
 # Run WASM tests
-make wasm-test
+just wasm-test
 
 # Start playground server
-make playground
+just playground
 ```
 
 ## Testing Guidelines
@@ -232,19 +252,33 @@ make playground
 
 ```bash
 # Run all tests
-make test
+just test
 
 # Run tests with output
-make test-verbose
+just test-verbose
 
 # Run WASM tests
-make wasm-test
+just wasm-test
 
 # Generate coverage report
-make coverage
+just coverage
 ```
 
 ## Documentation
+
+### Documentation Style
+
+All written documentation and code comments in this repo follow
+[ASD-STE100](https://www.asd-ste100.org/) (Simplified Technical English).
+This rule covers README.md, the `docs/` directory, CLAUDE.md, and rustdoc
+comments in `src/*.rs`. Follow these core rules:
+
+- Keep sentences under 20 words.
+- Put one idea in each sentence.
+- Use active voice. Name the actor.
+- Use present tense.
+- Use one term per concept. Do not switch between synonyms.
+- Do not use noun strings over three words.
 
 ### Code Documentation
 
@@ -262,7 +296,7 @@ make coverage
 
 ```bash
 # Generate and open documentation
-make doc
+just doc
 ```
 
 ## Release Process
@@ -270,7 +304,7 @@ make doc
 Releases are managed by maintainers. The process involves:
 
 1. Update version in Cargo.toml
-2. Generate changelog: `make changelog`
+2. Generate changelog: `just changelog`
 3. Create a git tag: `git tag v0.x.x`
 4. Push tag to trigger release workflow
 

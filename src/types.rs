@@ -1,7 +1,6 @@
 //! Type definitions for Trek
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Options for Trek parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,9 +136,6 @@ pub struct TrekResponse {
     pub metadata: TrekMetadata,
 }
 
-/// Variables extracted by site-specific extractors
-pub type ExtractorVariables = HashMap<String, String>;
-
 /// Content extracted by site-specific extractors
 #[derive(Debug, Clone, Default)]
 pub struct ExtractedContent {
@@ -152,14 +148,8 @@ pub struct ExtractedContent {
     /// Published date override
     pub published: Option<String>,
 
-    /// Text content
-    pub content: Option<String>,
-
     /// HTML content
     pub content_html: Option<String>,
-
-    /// Additional variables
-    pub variables: Option<ExtractorVariables>,
 }
 
 /// Mini App action type

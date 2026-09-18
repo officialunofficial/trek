@@ -1,11 +1,11 @@
-//! NYTimes article extractor — port of Defuddle's `nytimes.ts`.
+//! `NYTimes` article extractor — port of Defuddle's `nytimes.ts`.
 //!
 //! Reads `window.__preloadedData` JSON, walks `article.sprinkledBody.content`
 //! (or `article.body.content`), and renders block types into HTML. Picks the
 //! best image rendition (`superJumbo` > `jumbo` > `articleLarge`).
 // AGENT-P2C: Phase 2C news extractor.
 
-use kuchikiki::NodeRef;
+use crate::dom::engine::NodeRef;
 use serde_json::Value;
 
 use crate::extractor::{ExtractCtx, ExtractError, ExtractedContent, Extractor};
@@ -140,9 +140,8 @@ fn extract_preload_data(root: &NodeRef) -> Option<Value> {
         };
         let after = &after[brace_idx..];
         // Walk brace pairs respecting strings.
-        let raw = match scan_balanced_object(after) {
-            Some(s) => s,
-            None => continue,
+        let Some(raw) = scan_balanced_object(after) else {
+            continue;
         };
         let cleaned = raw
             .replace(":undefined,", ":null,")
@@ -229,13 +228,13 @@ fn render_blocks(blocks: &[Value]) -> String {
                 parts.push(format!("<p>{inner}</p>"));
             }
             "Heading2Block" => {
-                parts.push(format!("<h2>{}</h2>", render_inlines(block.get("content"))))
+                parts.push(format!("<h2>{}</h2>", render_inlines(block.get("content"))));
             }
             "Heading3Block" => {
-                parts.push(format!("<h3>{}</h3>", render_inlines(block.get("content"))))
+                parts.push(format!("<h3>{}</h3>", render_inlines(block.get("content"))));
             }
             "Heading4Block" => {
-                parts.push(format!("<h4>{}</h4>", render_inlines(block.get("content"))))
+                parts.push(format!("<h4>{}</h4>", render_inlines(block.get("content"))));
             }
             "ImageBlock" => {
                 if let Some(media) = block.get("media") {
@@ -299,9 +298,8 @@ fn render_blocks(blocks: &[Value]) -> String {
 }
 
 fn render_inlines(inlines: Option<&Value>) -> String {
-    let arr = match inlines.and_then(Value::as_array) {
-        Some(a) => a,
-        None => return String::new(),
+    let Some(arr) = inlines.and_then(Value::as_array) else {
+        return String::new();
     };
     let mut out = String::new();
     for inl in arr {

@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -27,7 +27,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- --version 0.15.0
 
       - name: Build WASM
         run: |
@@ -46,10 +46,10 @@ jobs:
           sed -i 's|../pkg/trek.js|../pkg/trek.js|g' deploy/playground/index.html
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./deploy
 

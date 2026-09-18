@@ -34,9 +34,9 @@
 //! References inside the body (`<sup id="fnref:N"><a href="#fn:N">`) are
 //! already understood by the markdown renderer; we don't rewrite them here.
 
-use kuchikiki::NodeRef;
-use once_cell::sync::Lazy;
+use crate::dom::engine::NodeRef;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use super::util::{
     attr, has_class, is_tag, new_element, remove_attr, select_all, select_first, set_attr,
@@ -115,11 +115,10 @@ fn add_class(node: &NodeRef, class: &str) {
 // Paragraph-style definitions in canonical .footnotes / #footnotes container
 // ---------------------------------------------------------------------------
 
-static LEADING_NUMBER: Lazy<Regex> = Lazy::new(|| {
+static LEADING_NUMBER: LazyLock<Regex> = LazyLock::new(|| {
     // Match a bare number, optionally wrapped in `[...]`/`(...)`/`{...}`,
     // optionally followed by a closing punctuation.
-    Regex::new(r"^\s*[\[\(\{]?\s*(\d+)\s*[\]\)\}]?\s*[.):]?\s*$")
-        .expect("leading number regex")
+    Regex::new(r"^\s*[\[\(\{]?\s*(\d+)\s*[\]\)\}]?\s*[.):]?\s*$").expect("leading number regex")
 });
 
 fn convert_paragraph_definitions(root: &NodeRef) {
@@ -157,13 +156,13 @@ fn convert_paragraph_definitions(root: &NodeRef) {
 
 fn leading_number_from_strong(p: &NodeRef) -> Option<String> {
     for child in p.children() {
-        if let Some(_) = child.as_text() {
+        if child.as_text().is_some() {
             if child.as_text()?.borrow().trim().is_empty() {
                 continue;
             }
             return None;
         }
-        if !child.as_element().is_some() {
+        if child.as_element().is_none() {
             continue;
         }
         if !(is_tag(&child, "strong") || is_tag(&child, "b")) {
@@ -180,8 +179,8 @@ fn leading_number_from_strong(p: &NodeRef) -> Option<String> {
 // Anchored definitions: `<a id="fn-1"></a> body…`
 // ---------------------------------------------------------------------------
 
-static FN_ANCHOR_ID: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(?:fn-|footnote-)(\d+)").expect("fn anchor regex"));
+static FN_ANCHOR_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:fn-|footnote-)(\d+)").expect("fn anchor regex"));
 
 fn convert_anchored_definitions(root: &NodeRef) {
     let anchors = select_all(root, "a[id]");
@@ -336,15 +335,14 @@ fn parse_def_paragraph(p: &NodeRef) -> Option<DefMatch> {
                 if found_sup {
                     label_buf.push_str(&txt);
                 } else if txt.trim().is_empty() {
-                    continue;
-                } else if let Some(caps) = LEADING_NUMBER.captures(txt.trim()) {
+                    // Skip whitespace-only text before the marker.
+                } else {
+                    let caps = LEADING_NUMBER.captures(txt.trim())?;
                     // Bare digit text directly inside <b>/<strong>.
                     return Some(DefMatch {
                         num: caps.get(1)?.as_str().to_string(),
                         label: None,
                     });
-                } else {
-                    return None;
                 }
             } else if is_tag(&cc, "sup") && !found_sup {
                 let txt = cc.text_contents();
@@ -509,28 +507,7 @@ fn collect_id_indexed_paragraph_definitions(root: &NodeRef) {
     if candidates.len() < 2 {
         return;
     }
-    // Build sequential numeric mapping; bail on duplicates.
-    let mut entries: Vec<(u64, NodeRef)> = Vec::new();
-    for p in &candidates {
-        let Some(id) = attr(p, "id") else { continue };
-        let Some(n_str) = id.strip_prefix("fn:") else { continue };
-        let Ok(n) = n_str.parse::<u64>() else { continue };
-        // Skip if this <p> is already inside a footnotes-list (avoid
-        // double-conversion).
-        let mut in_list = false;
-        let mut cur = p.parent();
-        while let Some(par) = cur {
-            if has_class(&par, "footnotes-list") {
-                in_list = true;
-                break;
-            }
-            cur = par.parent();
-        }
-        if in_list {
-            continue;
-        }
-        entries.push((n, p.clone()));
-    }
+    let mut entries = numbered_footnote_paragraphs(&candidates);
     if entries.len() < 2 {
         return;
     }
@@ -545,75 +522,107 @@ fn collect_id_indexed_paragraph_definitions(root: &NodeRef) {
     let ol = new_element("ol", &[("class", "footnotes-list")]);
     for (n, p) in &entries {
         let li = new_element("li", &[("id", &format!("fn:{n}"))]);
-        // Drop the leading anchor (back-ref) if it's the first child.
-        let mut first_a: Option<NodeRef> = None;
-        for c in p.children() {
-            if let Some(t) = c.as_text() {
-                if t.borrow().trim().is_empty() {
-                    continue;
-                }
-                break;
-            }
-            if c.as_element().is_some() {
-                if is_tag(&c, "a") {
-                    first_a = Some(c.clone());
-                }
-                break;
-            }
-        }
-        if let Some(a) = first_a {
-            a.detach();
-        }
-        // Also drop a leading `<sup>` containing only the index anchor.
-        let mut first_sup: Option<NodeRef> = None;
-        for c in p.children() {
-            if let Some(t) = c.as_text() {
-                if t.borrow().trim().is_empty() {
-                    continue;
-                }
-                break;
-            }
-            if c.as_element().is_some() {
-                if is_tag(&c, "sup") {
-                    let txt = c.text_contents().trim().to_string();
-                    if txt.is_empty()
-                        || txt
-                            .trim_matches(|c: char| c == '[' || c == ']')
-                            .chars()
-                            .all(|cc| cc.is_ascii_digit())
-                    {
-                        first_sup = Some(c.clone());
-                    }
-                }
-                break;
-            }
-        }
-        if let Some(s) = first_sup {
-            s.detach();
-        }
+        drop_leading_index_marker(p);
         transfer_children(p, &li);
         ol.append(li);
     }
     anchor.insert_after(ol);
     // Detach defs and their wrapper if wrapper becomes empty.
     for (_, p) in &entries {
-        let wrapper = wrapper_or_self(p);
-        if wrapper.0.as_ref() as *const _ != p.0.as_ref() as *const _ {
-            p.detach();
-            // If wrapper is now empty (only whitespace), detach it.
-            let any_significant = wrapper.children().any(|c| {
-                if let Some(t) = c.as_text() {
-                    !t.borrow().trim().is_empty()
-                } else {
-                    c.as_element().is_some()
-                }
-            });
-            if !any_significant {
-                wrapper.detach();
-            }
-        } else {
-            p.detach();
+        detach_paragraph_and_empty_wrapper(p);
+    }
+}
+
+/// Build the sequential `(number, paragraph)` mapping for `<p id="fn:N">`
+/// candidates, skipping duplicates and paragraphs already inside a
+/// `footnotes-list` (avoids double-conversion).
+fn numbered_footnote_paragraphs(candidates: &[NodeRef]) -> Vec<(u64, NodeRef)> {
+    let mut entries: Vec<(u64, NodeRef)> = Vec::new();
+    for p in candidates {
+        let Some(id) = attr(p, "id") else { continue };
+        let Some(n_str) = id.strip_prefix("fn:") else {
+            continue;
+        };
+        let Ok(n) = n_str.parse::<u64>() else {
+            continue;
+        };
+        if is_inside_footnotes_list(p) {
+            continue;
         }
+        entries.push((n, p.clone()));
+    }
+    entries
+}
+
+/// True when `p` has an ancestor already tagged `footnotes-list`.
+fn is_inside_footnotes_list(p: &NodeRef) -> bool {
+    let mut cur = p.parent();
+    while let Some(par) = cur {
+        if has_class(&par, "footnotes-list") {
+            return true;
+        }
+        cur = par.parent();
+    }
+    false
+}
+
+/// First significant (non-whitespace) child of `node`, whether text or
+/// element; `None` when a non-whitespace text node comes first.
+fn first_significant_child(node: &NodeRef) -> Option<NodeRef> {
+    for c in node.children() {
+        if let Some(t) = c.as_text() {
+            if t.borrow().trim().is_empty() {
+                continue;
+            }
+            return None;
+        }
+        if c.as_element().is_some() {
+            return Some(c);
+        }
+    }
+    None
+}
+
+/// Drop a leading back-reference anchor and/or a leading numeric `<sup>`
+/// index marker from `p`, so the `<li>` body starts with the definition
+/// text.
+fn drop_leading_index_marker(p: &NodeRef) {
+    if let Some(first) = first_significant_child(p) {
+        if is_tag(&first, "a") {
+            first.detach();
+        }
+    }
+    if let Some(first) = first_significant_child(p) {
+        if is_tag(&first, "sup") {
+            let txt = first.text_contents().trim().to_string();
+            let is_index_marker = txt.is_empty()
+                || txt
+                    .trim_matches(|c: char| c == '[' || c == ']')
+                    .chars()
+                    .all(|cc| cc.is_ascii_digit());
+            if is_index_marker {
+                first.detach();
+            }
+        }
+    }
+}
+
+/// Detach `p`, then detach its wrapper `<div>` too if that wrapper is now
+/// empty (only whitespace left behind).
+fn detach_paragraph_and_empty_wrapper(p: &NodeRef) {
+    let wrapper = wrapper_or_self(p);
+    p.detach();
+    if std::ptr::eq(wrapper.0.as_ref(), p.0.as_ref()) {
+        return;
+    }
+    let any_significant = wrapper.children().any(|c| {
+        c.as_text().map_or_else(
+            || c.as_element().is_some(),
+            |t| !t.borrow().trim().is_empty(),
+        )
+    });
+    if !any_significant {
+        wrapper.detach();
     }
 }
 
@@ -630,8 +639,7 @@ fn trim_whitespace_around_footnote_refs(root: &NodeRef) {
         let is_digit_ref = !trimmed.is_empty()
             && trimmed.chars().all(|c| c.is_ascii_digit())
             && trimmed.len() <= 4;
-        let is_class_ref = has_class(&sup, "footnote-ref")
-            || has_class(&sup, "footnote-reference");
+        let is_class_ref = has_class(&sup, "footnote-ref") || has_class(&sup, "footnote-reference");
         if !is_digit_ref && !is_class_ref {
             continue;
         }
@@ -648,7 +656,7 @@ fn trim_whitespace_around_footnote_refs(root: &NodeRef) {
                     if let Some(t) = prev.as_text() {
                         let raw = t.borrow().to_string();
                         if raw.trim().is_empty() {
-                            *t.borrow_mut() = "".into();
+                            *t.borrow_mut() = String::new();
                         }
                     }
                 }
@@ -723,20 +731,16 @@ fn wrapper_or_self(node: &NodeRef) -> NodeRef {
             }
             continue;
         }
-        if c.as_element().is_some() && c.0.as_ref() as *const _ != node.0.as_ref() as *const _ {
+        if c.as_element().is_some() && !std::ptr::eq(c.0.as_ref(), node.0.as_ref()) {
             others += 1;
         }
     }
-    if others == 0 {
-        parent
-    } else {
-        node.clone()
-    }
+    if others == 0 { parent } else { node.clone() }
 }
 
 /// Drop heading delimiters whose only purpose was introducing footnotes,
 /// when the run conversion has already happened.
-fn strip_footnote_delimiters(_root: &NodeRef) {
+const fn strip_footnote_delimiters(_root: &NodeRef) {
     // Currently a no-op — `convert_paragraph_definitions_global` removes
     // the immediate-preceding delimiter directly. Reserved for future use.
 }
@@ -844,7 +848,9 @@ fn convert_inline_footnote_span(root: &NodeRef) {
                 inner_content = Some(c.clone());
             }
         }
-        let Some(content) = inner_content else { continue };
+        let Some(content) = inner_content else {
+            continue;
+        };
         if num_str.is_empty() {
             count += 1;
             num_str = count.to_string();
@@ -865,10 +871,7 @@ fn convert_inline_footnote_span(root: &NodeRef) {
             // Use article/body ancestor as owner.
             let mut cur = content.parent();
             while let Some(p) = cur {
-                if matches!(
-                    tag_name_lc(&p).as_str(),
-                    "article" | "main" | "body"
-                ) {
+                if matches!(tag_name_lc(&p).as_str(), "article" | "main" | "body") {
                     owner = Some(p);
                     break;
                 }
@@ -924,10 +927,7 @@ fn convert_data_definition_aside(root: &NodeRef) {
         if owner.is_none() {
             let mut cur = target.parent();
             while let Some(p) = cur {
-                if matches!(
-                    tag_name_lc(&p).as_str(),
-                    "article" | "main" | "body"
-                ) {
+                if matches!(tag_name_lc(&p).as_str(), "article" | "main" | "body") {
                     owner = Some(p);
                     break;
                 }
@@ -954,11 +954,12 @@ fn convert_data_definition_aside(root: &NodeRef) {
 /// Rewrite easy-footnote plugin anchors so the markdown renderer recognises
 /// them as canonical footnote refs.
 fn rewrite_easy_footnote_classes(root: &NodeRef) {
-    static EASY_HREF: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"#easy-footnote-bottom-(\d+)").expect("easy footnote regex")
-    });
+    static EASY_HREF: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"#easy-footnote-bottom-(\d+)").expect("easy footnote regex"));
     for a in select_all(root, "a[href*=\"easy-footnote\"]") {
-        let Some(href) = attr(&a, "href") else { continue };
+        let Some(href) = attr(&a, "href") else {
+            continue;
+        };
         if let Some(caps) = EASY_HREF.captures(&href) {
             if let Some(num) = caps.get(1).map(|m| m.as_str().to_string()) {
                 set_attr(&a, "href", &format!("#fn:{num}"));
@@ -996,7 +997,9 @@ fn rewrite_ftnt_ids(root: &NodeRef) {
     }
     // hrefs
     for el in select_all(root, "a[href^=\"#ftnt\"]") {
-        let Some(href) = attr(&el, "href") else { continue };
+        let Some(href) = attr(&el, "href") else {
+            continue;
+        };
         if let Some(rest) = href.strip_prefix("#ftnt_ref") {
             set_attr(&el, "href", &format!("#fnref:{rest}"));
         } else if let Some(rest) = href.strip_prefix("#ftnt") {
@@ -1014,14 +1017,16 @@ fn rewrite_ftnt_ids(root: &NodeRef) {
 // paragraph-definition pass will then convert them into an ol.
 // ---------------------------------------------------------------------------
 
-static WORD_FTN_HREF: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)#_ftn(\d+)").expect("word ftn regex"));
-static WORD_FTNREF_HREF: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)#_ftnref(\d+)").expect("word ftnref regex"));
+static WORD_FTN_HREF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)#_ftn(\d+)").expect("word ftn regex"));
+static WORD_FTNREF_HREF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)#_ftnref(\d+)").expect("word ftnref regex"));
 
 fn rewrite_word_ftn_ids(root: &NodeRef) {
     for el in select_all(root, "a[href*=\"_ftn\"]") {
-        let Some(href) = attr(&el, "href") else { continue };
+        let Some(href) = attr(&el, "href") else {
+            continue;
+        };
         // Check ftnref FIRST (more specific suffix on top of ftn).
         if let Some(caps) = WORD_FTNREF_HREF.captures(&href) {
             if let Some(num) = caps.get(1).map(|m| m.as_str().to_string()) {
@@ -1041,12 +1046,12 @@ fn rewrite_word_ftn_ids(root: &NodeRef) {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // OK to use unwrap in tests
 mod tests {
     use super::*;
-    use kuchikiki::traits::TendrilSink;
 
     fn parse(html: &str) -> NodeRef {
-        kuchikiki::parse_html().one(html)
+        crate::dom::parse_html(html)
     }
 
     fn serialize(node: &NodeRef) -> String {
@@ -1079,7 +1084,7 @@ mod tests {
 
     #[test]
     fn hr_delimited_sup_paragraphs_convert() {
-        let html = r#"<html><body><article><p>Body<sup>1</sup></p><hr><p><sup>1</sup> first</p><p><sup>2</sup> second</p></article></body></html>"#;
+        let html = r"<html><body><article><p>Body<sup>1</sup></p><hr><p><sup>1</sup> first</p><p><sup>2</sup> second</p></article></body></html>";
         let root = parse(html);
         normalize_footnotes(&root);
         let out = serialize(&root);
@@ -1089,12 +1094,15 @@ mod tests {
 
     #[test]
     fn heading_delimited_sup_paragraphs_convert() {
-        let html = r#"<html><body><article><p>Body<sup>1</sup></p><h2>Notes</h2><p><sup>1</sup> first</p><p><sup>2</sup> second</p></article></body></html>"#;
+        let html = r"<html><body><article><p>Body<sup>1</sup></p><h2>Notes</h2><p><sup>1</sup> first</p><p><sup>2</sup> second</p></article></body></html>";
         let root = parse(html);
         normalize_footnotes(&root);
         let out = serialize(&root);
         assert!(out.contains(r#"class="footnotes-list""#), "got: {out}");
-        assert!(!out.contains("<h2>Notes</h2>"), "heading not stripped: {out}");
+        assert!(
+            !out.contains("<h2>Notes</h2>"),
+            "heading not stripped: {out}"
+        );
     }
 
     #[test]
